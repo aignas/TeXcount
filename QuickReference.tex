@@ -7,10 +7,9 @@
 \include{macros}
 
 
-\title{\TeXcount{}\footnote{Copyright (2008-2009) of Einar Andreas Rødland, distributed
-under the \LaTeX{} Project Public Licence (LPPL).}~
+\title{\TeXcount{}\copyrightfootnote{}~
 Quick Reference Guide\\
-Version 2.2
+Version \version
 }
 
 \begin{document}
@@ -22,71 +21,8 @@ Version 2.2
 Syntax for running \TeXcount{}:
 \codeline{texcount \textit{[options] [files]}}
 where \code{texcount} refers to the TeXcount Perl-script, and the options may be amongst the following:
-\begin{description}
-\def\option[#1]{\item[\quad\code{#1}]}
-\def\alt#1{[#1]}
 
-\option[-v]Verbose (same as -v3).
-
-\option[-v0]No details (default).
-
-\option[-v1]Prints counted text, marks formulae.
-
-\option[-v2]Also prints ignored text.
-
-\option[-v3]Also includes comments and options.
-
-\option[-v4]Same as \code{-v3 -showstate}.
-
-\option[-showstate]Show internal states (with verbose).
-
-\option[-brief]Only prints a one line summary of the counts.
-
-\option[-q, -quiet]Quiet mode, does not print error messages. Use is
-discouraged, but it may be useful when piping the output into another
-application.
-
-\option[-total]Only give total sum, no per file sums.
-
-\option[-1]Same as specifying \code{-brief} and \code{-total}, and ensures there will only be one line of output. If used with \code{-sum}, the output will only be the total number.
-
-\option[-sub\alt{=\ldots}, -subcount\alt{=\ldots}]Generate subcounts. Valid  option values are \code{none}, \code{part}, \code{chapter}, \code{section} and \code{subsection} (default), indicating at which level subcounts are generated.
-
-\option[-sum\alt{=n,n,\ldots}]Produces total sum, default being all words and formulae, but customizable to any weighted sum of the seven counts (list of weights for text words, header words, caption words, headers, floats, inlined formulae, displayed formulae).
-
-\option[-nc, -nocol]No colours (colours require ANSI).
-
-\option[-relaxed]Relaxes the rules for matching words and macro options.
-
-\option[-inc]Include tex files included in the document.
-
-\option[-noinc]Do not include included tex files (default).
-
-\option[-dir\alt{=\ldots}]Working directory, either taken from the first file given, or specified.
-
-\option[-utf8, -unicode]Turn on Unicode (UTF-8) support.
-
-\option[-ch, -chinese, -zhongwen]Turn on Chinese mode in which Chinese
-characters are counted. Switches on UTF-8 mode.
-
-\option[-jp, -japanese]Turn on Japanese mode in which Japanese
-characters (kanji and kana) are counted. Switches on UTF-8 mode.
-
-\option[-html]Output in HTML format.
-
-\option[-htmlcore]Only HTML body contents.
-
-\option[-codes]Display an overview of the colour codes. Can be used as a separate option to only display the colour codes, or together with files to parse.
-
-\option[-nocodes]Do not display overview of colour codes.
-
-\option[-h, -?, --help, /?]Help.
-
-\option[--version]Print version number.
-
-\option[--license]License information.
-
-\end{description}
+\input{sub_options}
 
 
 \section{\TeXcount{} instructions embedded in \LaTeX{} documents}
@@ -96,13 +32,7 @@ Instructions to \TeXcount{} can be given from within the
 \codeline{\%TC:\textit{instruction [name] parameters}}
 where the name is use for instructions providing macro handling rules to give the name of the macro or group for which the rule applies.
 
-\begin{description}\def\option#1{\item[\bigcode{#1}]}
-
-\option{ignore}Indicates start of a region to be ignored. End region with the TC-instruction \code{endignore}.
-
-\option{break \textit{title}}Break point which initiates a new subcount. The title is used to identify the following region in the summary output.
-
-\end{description}
+\input{sub_tc_other}
 
 \subsection{Adding macro handling rules}
 
@@ -110,24 +40,6 @@ The macro handling rules all take the format
 \codeline{\%TC:\textit{instruction name parameters}}
 where the name indicates the macro (with backslash) or group name for which the rule applies.
 
-\begin{description}\def\option[#1]{\item[\bigcode{#1}]}
-
-\option[macro]Define macro handling rule for specified macro. Takes one parameter which is either an integer or a \code{[]}-enclosed array of integers (e.g. \code{[0,1,0]}). An integer value $n$ indicates that the $n$ first parameters to the macro should be ignored. An array of length $n$ indicates that the first $n$ parameters should be handled, and the numbers of the array specifies the parsing status (see below) with which they should be parsed. Giving the number $n$ as parameter is equivalent to giving an array of $n$ zeroes (\code{[0,\ldots,0]}) as zero is the parsing status for ignoring text.
-
-\option[macroword]This defines the given macro to represent a certain number of words, where the number is given as the parameter.
-
-\option[header]Define macro to give a header. This is specified much as the macro rule. The added effect is that the header counter is increase by 1. Note, however, that you should specify a parameter array, otherwise none of the parameters will be parsed as header text. The parser status for header text is 2, so a standard header macro that uses the first parameter as header should be given the parameter \code{[2]}.
-
-\option[breakmacro]Specify that the given macro should cause a break point. Defining it as a header macro does not do this, nor is it required of a break point macro that it be a header (although I suppose in most cases of interest it will be).
-
-\option[group]This specifies a begin-end group with the given name (no backslash). It takes two further parameters. The first parameter speficies the macro rule following \code{\bs{begin}\{\textit{name}\}}. The second parameter specifies the parser status with which the contents should be parsed: e.g. $1$ for text (default rule), $0$ to ignore, $-1$ to specify a float (table, group, etc.) for which text should not be counted but captions should, $6$ and $7$ for inline or displated math.
-
-\option[floatinclude]This may be used to specify macros which should be counted when within float groups. The handling rules are spefified as for \code{macro}, but like with \code{header} an array parameter should be provided and parameters that should be counted as text in floats should be specified by parsing status 3. Thus, a macro that takes one parameter which should be counted as float/caption text should take the parameter \code{[3]}.
-
-\option[preambleinclude]The preamble, i.e. text between \code{\bs{documentclass}} and \code{\bs{begin}\{document\}}, if the document contains one, should generally not be included in the word count. However, there may be definitions, e.g. \code{\bs{title}\{title text\}}, that should still be counted. In order to be able to include these special cases, there is a preambleinclude rule in which one may speficy handling rules for macros within the preamble. Again, the rule is speficied like the \code{macro} rules, but since the default is to ignore text the only relevant rules to be specified require an array.
-
-\option[fileinclude]By default, \TeXcount{} does not automatically add files included in the document using \code{\bs{input}} or  \code{\bs{include}}, but inclusion may be turned on by using the option \code{-inc}. If other macros are used to include files, these may be specifed by adding fileinclude rules for these macros. The specification takes one parameter: 0 if the file name should be used as provided, 1 if file type \code{.tex} should be added to files without a file type, and 2 if the file tyle \code{.tex} should always be added.
-
-\end{description}
+\input{sub_addrules}
 
 \end{document}

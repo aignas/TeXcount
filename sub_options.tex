@@ -1,0 +1,110 @@
+% Subsection: command line options
+
+\begin{description}
+\sloppy
+\def\option[#1]{\item[\quad\code{#1}]\hskip 0pt plus 10pt}
+\def\alt#1{[#1]}
+
+\option[-v]Verbose (same as \code{-v3}).
+
+\option[-v0]No details (default).
+
+\option[-v1]Prints counted text, marks formulae.
+
+\option[-v2]Also prints ignored text.
+
+\option[-v3]Also includes comments and options.
+
+\option[-v4]Same as \code{-v3 -showstate}.
+
+\option[-showstate]Show internal states (with verbose).
+
+\option[-brief]Only prints a one line summary of the counts for each file.
+
+\option[-q, -quiet]Quiet mode, does not print error messages. Use is discouraged, but it may be useful when piping the output into another application.
+
+\option[-strict]Prints a warning of begin-end groups for which no specific rule is defined.
+
+\option[-total]Only give total sum, no per file sums.
+
+\option[-1]Same as specifying \code{-brief} and \code{-total}, and ensures there will only be one line of output. If used with \code{-sum}, the output will only be the total number.
+
+\option[-0]Same as \code{-1}, i.e. \code{-brief} and \code{-total}, but does not put a line shift at the end. This may be useful when the one line output is to be used by another application, e.g. Emacs, for which the line shift would otherwise need to be stripped away.
+
+\option[-template="\ldots"]Speficy an output template which is used to generate the summary output for each file and for the total count. Codes \code{\{\textit{label}\}} is used to include values, where \code{\textit{label}} is one of \code{0} to \code{7} (for the counts), \code{SUM}, \code{ERROR} or \code{TITLE} (first character of label is sufficient). Conditional inclusion is done using \code{\{\textit{label}?\textit{text}?\textit{label}\}} or \code{\{\textit{label}?\textit{if non-zero}|\textit{if zero}?\textit{label}\}}. If the count contains at least two subcounts, use \code{\{SUB|\textit{template}|SUB\}} with a separate template for the subcounts, or \code{\{SUB?\textit{prefix}|\textit{template}|\textit{suffix}?SUB\}}.
+
+\option[-sub\alt{=\ldots}, -subcount\alt{=\ldots}]Generate subcounts. Valid option values are \code{none}, \code{part}, \code{chapter}, \code{section} and \code{subsection} (default), indicating at which level subcounts are generated. (On by default.)
+
+\option[-nosub]Do not generate subcounts.
+
+\option[-sum\alt{=n,n,\ldots}]Produces total sum, default being all words and formulae, but customizable to any weighted sum of the seven counts (list of weights for text words, header words, caption words, headers, floats, inlined formulae, displayed formulae).
+
+\option[-nosum]Do not generate total sum. (Default choice.)
+
+\option[-col]Use ANSI colour codes in verbose output. This requires ANSI colours which is used on Linux, but may not be available under Windows. On by default on non-Windows systems. 
+
+\option[-nc, -nocol]No colours (colours require ANSI). Default under Windows.
+
+\option[-relaxed]Relaxes the rules for matching words and macro options.
+
+\option[-restricted]Restricts the rules for matching words and macro options.
+
+\option[-]Read \LaTeX{} code from STDIN.
+
+\option[-inc]Parse included files (as separate files).
+
+\option[-merge]Merge included files into document (in place).
+
+\option[-noinc]Do not parse or merge in included files (default).
+
+\option[-incbib]Include bibliography in count, include bbl file if needed.
+
+\option[-nobib]Do not include bibliography in count (default).
+
+\option[-incpackage=]Include rules for a given package.
+
+\option[-dir\alt{=\ldots}]Specify working directory which will serve as root for all include files. Default (\code{-dir=""}) is to use the present directory. Use \code{-dir} to use path of the main \LaTeX{} document.
+
+\option[-enc=, -encoding=]Specify encoding to use in input (and text output).
+
+\option[-utf8, -unicode]Use UTF-8 (Unicode) encoding. Same as \code{-encoding=utf8}.
+
+\option[-alpha=, -alphabets=]List of Unicode character groups (or digit, alphabetic) permitted as letters. Names are separated by \code{,} or \code{+}. If list starts with \code{+}, the alphabets will be added to those already included. The default is Digit+alphabetic.
+
+\option[-logo=, -logograms=]List of Unicode character groups interpreted as whole word characters, e.g. Han for Chinese characters. Names are separated by \code{,} or \code{+}. If list starts with \code{+}, the alphabets will be added to those already included. By default, this is set to include Ideographic, Katakana, Hiragana, Thai and Lao.
+
+\option[-ch, -chinese, -zhongwen]Turn on Chinese mode in which Chinese characters are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (GB2312, Big5, Hz) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}.
+
+\option[-jp, -japanese]Turn on Japanese mode in which Japanese characters (kanji and kana) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-JP) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}.
+
+\option[-chinese-only, ..., -japanese-only]As options \code{-chinese}, ..., \code{-japanese}, but also excludes letter-based words.
+
+\option[-char, -letter]Count letters instead of words. This count does not include spaces.
+
+\option[-html]Output in HTML format.
+
+\option[-htmlcore]Only HTML body contents.
+
+\option[-freq\alt{=\#}]Count individual word frequencies. Optionally, give minimal frequency required to be included in output.
+
+\option[-stat]Produce statistics on language usage, i.e. based on the alphabets and logograms included. 
+
+\option[-codes]Display an overview of the colour codes. Can be used as a separate option to only display the colour codes, or together with files to parse.
+
+\option[-nocodes]Do not display overview of colour codes.
+
+\option[-opt=, -optionfile=]Reads options (command line parameters) from a specified text file. Should use one option per line. May also include TC options in the same format as specified in \LaTeX{} documents, but prefixed by \code{\%} rather than \code{\%TC:}. Blank lines and lines starting with \code{\#} are ignored; lines starting with \code{\bs{}} are considered to be continuations of the previous line.
+
+\option[-split, -nosplit]The \code{-split} option, which is on by default, speeds up handling of large files by splitting the file into paragraphs. To turn it off, use the \code{-nosplit} option.
+
+\option[-showver, -nover]Include version number in output with \code{-showver}; use \code{-nover} not to show it (default). 
+
+\option[-h, -?, --help, /?]Help.
+
+\option[-h=, -?=, --help=, /?=]Help on particular macro or group name: gives the parsing rule for that macro or group if defined. You may have to use \code{-incpackage=}package if the rule is defined for a specific package, and this option must be placed \emph{before} the \code{-h=} option on the command line.
+
+\option[-ver, --version]Print version number.
+
+\option[-lic, --license]License information.
+
+\end{description}

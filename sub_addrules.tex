@@ -1,0 +1,25 @@
+% Subsection: TC-commands for adding macro rules
+
+\begin{description}
+\sloppy
+\def\option[#1]{\item[\bigcode{#1}]\hskip 0pt plus 10pt}
+
+\option[macro]Defines macro handling rule for the specified macro. It takes one parameter which is either an integer or a \code{[]}-enclosed array of integers (e.g. \code{[0,1,0]}). An integer value $n$ indicates that the $n$ first parameters to the macro should be ignored. An array of length $n$ indicates that the first $n$ parameters should be handled by the rule, and the numbers in the array specifies the parsing status (see below) with which they should be parsed. Giving the number $n$ as parameter is equivalent to giving an array of $n$ zeroes (\code{[0,\ldots,0]}) as zero is the parsing status for ignoring text. For all macros, also those for which no rules have been defined, options enclosed in \code{[]} between or after macros and their parameters are ignored.
+
+\option[macroword]This defines the given macro to be counted as a certain number of words, where the number is given as the parameter.
+
+\option[header]Define macro to be a header. This is specified as the macro rule, but has the added effect is that the header counter is increase by 1. Note, however, that you should specify a parameter array, otherwise none of the parameters will be parsed as header text. The parser status for header text is 2, so a standard header macro that uses the first parameter as header should be given the parameter \code{[2]}.
+
+\option[breakmacro]Specify that the given macro should cause a break point. Defining it as a header macro does not do this, nor is it required of a break point macro that it be a header (although I suppose in most cases of interest it will be).
+
+\option[group]This specifies a begin-end group with the given name (no backslash). It takes two further parameters. The first parameter speficies the macro rule following \code{\bs{begin}\{\textit{name}\}}. The second parameter specifies the parser status with which the contents should be parsed: e.g. $1$ for text (default rule), $0$ to ignore, $-1$ to specify a float (table, group, etc.) for which text should not be counted but captions should, $6$ and $7$ for inline or displated math.
+
+\option[floatinclude]This may be used to specify macros which should be counted when within float groups. The handling rules are spefified as for \code{macro}, but like with \code{header} an array parameter should be provided and parameters that should be counted as text in floats should be specified by parsing status 3. Thus, a macro that takes one parameter which should be counted as float/caption text should take the parameter \code{[3]}.
+
+\option[preambleinclude]The preamble, i.e. text between \code{\bs{documentclass}} and \code{\bs{begin}\{document\}}, if the document contains one, should generally not be included in the word count. However, there may be definitions, e.g. \code{\bs{title}\{title text\}}, that should still be counted. In order to be able to include these special cases, there is a preambleinclude rule in which one may speficy handling rules for macros within the preamble. Again, the rule is speficied like the \code{macro} rules, but since the default is to ignore text the only relevant rules to be specified require an array.
+
+\option[fileinclude]By default, \TeXcount{} does not automatically add files included in the document using \code{\bs{input}} or  \code{\bs{include}}, but inclusion may be turned on by using the option \code{-inc}. If other macros are used to include files, these may be specifed by adding fileinclude rules for these macros. The specification takes one parameter: 0 if the file name should be used as provided, 1 if file type \code{.tex} should be added to files without a file type, and 2 if the file tyle \code{.tex} should always be added.
+
+\option[subst]This substitutes a macro (the first parameter) with any text (the remaining option). Substitution is performed only on the present file and on the text following the instruction. Note that substitution is performed directly on the \LaTeX{} code prior to parsing, and the verbose output will show the substituted text. E.g. \code{\%TC:subst \bs{test} TEST} will cause a following \code{\bs{newcommand}\bs{test}{TEST}} to be changed into \code{\bs{newcommand} TEST{TEST}}, which \TeXcount{} will interpret differently. Use with care!
+
+\end{description}
