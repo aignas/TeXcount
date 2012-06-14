@@ -7,8 +7,8 @@ use POSIX qw(locale_h);
 use locale;
 setlocale(LC_CTYPE,"no_NO");
 
-my $versionnumber="2.2.beta";
-my $versiondate="2009 Mar 17";
+my $versionnumber="2.2";
+my $versiondate="2009 Apr 30";
 
 ###### Set CMD specific settings and variables
 
@@ -180,7 +180,7 @@ my @WordPatterns=('(@+\.)+@+\.?','@+([\-\']@+)*');
 my $specialchars='\\\\(ae|AE|o|O|aa|AA)';
 my $modifiedchars='\\\\[\'\"\`\~\^\=](\w|\{\w\})';
 my $LetterPattern='\w';
-my $LetterPatternRelaxed='([\w\-\']|'.$modifiedchars.'|'.$specialchars.'(\{\})?|\{'.$specialchars.'\})';
+my $LetterPatternRelaxed='([\w\-\']|'.$modifiedchars.'|'.$specialchars.'(\{\})?|\{'.$specialchars.'\}|\{\w\})';
 my %NamedWordPattern;
 $NamedWordPattern{'chinese'}='\p{script=Han}';
 $NamedWordPattern{'japanese'}='(\p{script=Han}|\p{script=Hiragana}|\p{script=Katakana})';
@@ -218,10 +218,7 @@ sub MAIN {
     my $totalcount=parse_file_list(@toplevelfiles);
     conditional_print_total($totalcount);
   }
-  if ($errorcount>=0) {
-    if ($briefsum && $totalflag) {print " ";}
-    print "(errors:".$errorcount.")";
-  }
+  Report_ErrorCount();
   Close_Output();
 }
 
@@ -284,12 +281,10 @@ sub parse_options_parsing {
   elsif ($arg=~/^-(ch|chinese|zhongwen)$/) {
     $utf8flag=1;
     @WordPatterns=($NamedWordPattern{'chinese'},@WordPatterns);
-    #@WordPatterns=('\p{script=Han}',@WordPatterns);
   }
   elsif ($arg=~/^-(jp|japanese)$/) {
     $utf8flag=1;
     @WordPatterns=($NamedWordPattern{'japanese'},@WordPatterns);
-    #@WordPatterns=('(\p{script=Han}|\p{script=Hiragana}|\p{script=Katakana})',@WordPatterns);
   }
   elsif ($arg eq '-relaxed') {
     @MacroOptionPatterns=@MacroOptionPatternsRelaxed;
@@ -1095,6 +1090,18 @@ sub flush_next {
 sub Close_Output {
   if ($htmlstyle>1) {
     html_tail();
+  }
+}
+
+
+# Report if there were any errors occurring during parsing
+sub Report_ErrorCount {
+  if ($errorcount==0) {return;}
+  if ($briefsum && $totalflag) {print " ";}
+  if ($htmlstyle) {
+    print_error("Errors:".$errorcount,"p","error");
+  } else {
+    print "(errors:".$errorcount.")";
   }
 }
 
