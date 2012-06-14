@@ -9,11 +9,11 @@
 %\parindent=0pt\parskip=8pt
 
 
-\title{\TeXcount\footnote{Copyright 2008 Einar Andreas Rødland, distributed
+\title{\TeXcount\footnote{Copyright (2008-2009) of Einar Andreas Rødland, distributed
 under the \LaTeX{} Project Public Licence (LPPL).}\\
 \Large
 Perl script for counting words in \LaTeX{} documents\\
-Version 2.1}
+Version 2.1.$\beta$}
 \author{Einar Andreas Rødland}
 
 \begin{document}
@@ -100,6 +100,10 @@ where the options may be amongst the following:
 
 \option[-brief]Only prints a one line summary of the counts.
 
+\option[-q, -quiet]Quiet mode, does not print error messages. Use is
+discouraged, but it may be useful when piping the output into another
+application.
+
 \option[-total]Only give total sum, no per file sums.
 
 \option[-1]Same as specifying \code{-brief} and \code{-total}, and ensures there will only be one line of output. If used with \code{-sum}, the output will only be the total number.
@@ -117,6 +121,14 @@ where the options may be amongst the following:
 \option[-noinc]Do not include included tex files (default).
 
 \option[-dir\alt{=\ldots}]Working directory, either taken from the first file given, or specified.
+
+\option[-utf8, -unicode]Turn on Unicode (UTF-8) support.
+
+\option[-ch, -chinese, -zhongwen]Turn on Chinese mode in which Chinese
+characters are counted. Switches on UTF-8 mode.
+
+\option[-jp, -japanese]Turn on Japanese mode in which Japanese
+characters (kanji and kana) are counted. Switches on UTF-8 mode.
 
 \option[-html]Output in HTML format.
 
