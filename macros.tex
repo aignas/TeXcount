@@ -1,0 +1,39 @@
+%% LaTeX macros
+
+%TC:macroword \TeXcount 1
+\newcommand\TeXcount{{\TeX}count}
+
+\newcommand\code[1]{\texttt{\small#1}}
+\newcommand\bigcode[1]{\texttt{#1}}
+\newcommand\codeline[1]{\begin{quote}\code{#1}\end{quote}}
+\newcommand\bs[1]{\textbackslash#1}
+\newcommand\URL[1]{\texttt{\small #1}}
+
+%TC:macro NB 1
+\newcommand\NB[1]{\marginpar{\textsf{\tiny#1}}}
+
+
+\makeatletter
+
+\renewcommand\@maketitle{%
+\newpage\null\vskip 2em%
+\begin{center}%
+\let\footnote\thanks
+{\LARGE \@title \par}%
+\end{center}%
+\par
+\vskip 1.5em
+}
+
+\renewcommand\abstractname{ABSTRACT}
+\renewenvironment{abstract}{%
+  \begin{center}%
+    {\bfseries\large\abstractname\vspace{-.5em}\vspace{\z@}}%
+  \end{center}%
+  \vskip 4pt
+  \bfseries
+}{
+\vskip 0.5em
+}
+
+\makeatother

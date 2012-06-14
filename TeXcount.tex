@@ -1,0 +1,332 @@
+\documentclass{article}
+\usepackage[latin1]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{a4wide}
+\usepackage{times}
+
+\include{macros}
+
+%\parindent=0pt\parskip=8pt
+
+
+\title{\TeXcount\footnote{Copyright 2008 Einar Andreas Rødland, distributed
+under the \LaTeX{} Project Public Licence (LPPL).}\\
+\Large
+Perl script for counting words in \LaTeX{} documents\\
+Version 2.1}
+\author{Einar Andreas Rødland}
+
+\begin{document}
+
+\maketitle
+
+{\abstract%
+\TeXcount{} is a Perl script for counting words in \LaTeX{} documents. It recognizes most of the common macros, and has rules for which parameters to count and not to count; the main text is counted separately from the words in headers and in captions of figures and tables. Finally, it produces a colour coded version of the parsed document, either as a text document or as HTML to be viewed in a browser, indicating which parts of the document have been included in the count.
+%
+}
+
+\tableofcontents
+
+
+\section{What does \TeXcount{} do?}
+
+\TeXcount{} is a Perl script made for counting the words in a \LaTeX{} document. Since \LaTeX{} documents are formated using lots of macro instructions and often contain both mathematical formulae and floating tables and figures, this is no trivial task.
+
+Simple solutions to counting the words consists of detexing the documents, which often merely consisty of ignoring the \TeX{} and \LaTeX{} instructions. This is a bad solution since it will usually result in over-estimating the number of words as mathematical formulae, citations, labels and references are counted.
+
+A perfect solution, if such exists, needs to take into account how \LaTeX{} interprets each macro instruction. The simplest approach to taking this into account consisty of making the count based on the typeset document, but this too tends to over-estimate the word count as mathematical formulae, table contents and even page numbers may get counted.
+
+A simple but robust approach, which is the one I have taken with \TeXcount{}, is to parse the \LaTeX{} document using simple rules for how to interpret the different \TeX{} and \LaTeX{} instructions. Rules for most of the common macro instructions are included in \TeXcount{}, and it is possible to specify new rules in the \TeX{} document.
+
+The primary focus of \TeXcount{} is to:
+\begin{itemize}
+
+\item provide an accurate count of the number of words in \LaTeX documents;
+
+\item exclude or count separately document elements which are not part of the main text such as figure captions;
+
+\item enable the user to, with relative ease, check how \TeXcount{} has parsed the document and which elements have been counted and which have not.
+
+\end{itemize}
+The last point on this list is one of the most important. Having an accurate word count is of little value unless you know that it is accurate; conversly, trusting an inaccurate word count can be potentially harmful, e.g. if you are submitting a paper or a report which has a strict word limit.
+
+\TeXcount{} handles complete \LaTeX{} documents, i.e. that start with \code{\bs{documentclass}} and has the text between \code{\bs{begin}\{document\}} and \code{\bs{end}\{document\}}, as well as partial documents made to be included in another \LaTeX{} document. Automatic inclusion of included documents is possible, but is by default turned off.
+
+Since \TeXcount{} relies on a relatively simple rules for how to handle the different macros and only performs limited checks on the validity of the \LaTeX{} document, it is your responsibility to make sure the document actually typesets in \LaTeX{} before running it through \TeXcount{}. Also, \TeXcount{} relies on handling macros taking parameters enclosed with \{ and \}, and on ignoring options enclosed by [ and ]: macros with significantly different syntax such as \code{\bs{vskip}} cannot be handled.
+
+\subsection{What \TeXcount{} does not do}
+
+While an ideal solution should be able to expand the macro instructions, thus being able to handle new macros, that would at it's worst require reimplementing much of \TeX{}, something that is clearly unrealistic. While some limited methods for handling new macros based on definitions in the file might be done, I have opted for a simpler solution: to define rules stating which paramters to count and which to ignore. Thus, \TeXcount{} cannot handle macros that may take a variable number of parameters. Nor can it handle macros that takes parameters on forms other than \code{\{parameter\}}.
+
+In general, while \TeXcount{} does the parsing in some detail, it does not do it exacly as \TeX{} does it. In some respects there may therefore be critical difference: e.g. while \TeX{} reads one character at a time, \TeXcount{} reads one word at a time, so while \LaTeX{} would interpret \code{\bs{cite} me} as \code{\bs{}cite\{m\}e}, \TeXcount{} would interpret it like \code{\bs{cite}\{me\}}.
+
+Another issue is that, since \TeXcount{} does not know how to expand macros, it cannot handle macros like \code{\bs{maketitle}}. Instead, it will count \code{\bs{title}\{title text\}} when it occurs.
+
+For users of languages containing letters other than A to Z, there may be an additional challenge. The script relies on Perl to recognize words as sequence of letters, and must therefore know which characters are considered to be letters. The Perl locale may be changed (as of now this is hard-coded!) to accommodate this, but this does not work for special letters encoded using \TeX{} or \LaTeX{} macros or codes: e.g. \code{\bs{aa}} and \code{\bs{"}a} will not be understood to be letters in the present implementation, whereas \code{\aa} and \code{\"a} will. I have added a relaxed mode where some special character and character modifying macros are allowed as parts of words, which may be activated with the option \code{-relaxed}.
+
+
+\section{Syntax and options}
+
+\subsection{Running \TeXcount{}}
+
+The command to run \TeXcount{} may vary slightly depending on the operating system and the local settings.
+
+Under Linux/Unix, it should be sufficient to run \code{texcount.pl} provided it is in the PATH and has been made executable (\code{chmod u+x texcount.pl}). The first line of the file, the one starting with \code{\#!}, tells Linux/Unix which command to use to run the script. This may either direct to the \code{perl} command giving the full path to it (use \code{which perl} if you need to find out where \code{perl} is located) or, as is done in more recent versions of \TeXcount{}, contain the line \code{\#!/usr/bin/env perl} which should find the correct location for \code{perl} (provided the program \code{/usr/bin/env} is available).
+
+Under Windows, running \code{texcount} from the command line suffices if \code{texcount.pl} is in the path and pl-files are defined to run as Perl scripts.
+
+Alternatively, if the above methods do not work, you may have to execute it more exclicitly under Perl using \code{perl texcount.pl}. You then need to have the \code{perl} executable file in the path or give the explicit path.
+
+I will simply write \code{texcount} in this manual for the code to execute the script. Then, the syntax becomes
+\codeline{texcount \textit{[options] [files]}}
+where the options may be amongst the following:
+\begin{description}
+\def\option[#1]{\item[\quad\code{#1}]}
+\def\alt#1{[#1]}
+
+\option[-v]Verbose (same as -v3).
+
+\option[-v0]No details (default).
+
+\option[-v1]Prints counted text, marks formulae.
+
+\option[-v2]Also prints ignored text.
+
+\option[-v3]Also includes comments and options.
+
+\option[-v4]Same as \code{-v3 -showstate}.
+
+\option[-showstate]Show internal states (with verbose).
+
+\option[-brief]Only prints a one line summary of the counts.
+
+\option[-total]Only give total sum, no per file sums.
+
+\option[-1]Same as specifying \code{-brief} and \code{-total}, and ensures there will only be one line of output. If used with \code{-sum}, the output will only be the total number.
+
+\option[-sub\alt{=\ldots}, -subcount\alt{=\ldots}]Generate subcounts. Valid  option values are \code{none}, \code{part}, \code{chapter}, \code{section} and \code{subsection} (default), indicating at which level subcounts are generated.
+
+\option[-sum\alt{=n,n,\ldots}]Produces total sum, default being all words and formulae, but customizable to any weighted sum of the seven counts (list of weights for text words, header words, caption words, headers, floats, inlined formulae, displayed formulae).
+
+\option[-nc, -nocol]No colours (colours require ANSI).
+
+\option[-relaxed]Relaxes the rules for matching words and macro options.
+
+\option[-inc]Include tex files included in the document.
+
+\option[-noinc]Do not include included tex files (default).
+
+\option[-dir\alt{=\ldots}]Working directory, either taken from the first file given, or specified.
+
+\option[-html]Output in HTML format.
+
+\option[-htmlcore]Only HTML body contents.
+
+\option[-codes]Display an overview of the colour codes. Can be used as a separate option to only display the colour codes, or together with files to parse.
+
+\option[-nocodes]Do not display overview of colour codes.
+
+\option[-h, -?, --help, /?]Help.
+
+\option[--version]Print version number.
+
+\option[--license]License information.
+
+\end{description}
+
+If more than one file is given, \TeXcount{} will perform the count on each of them printing the results for each, then print the total sum at the end.
+
+\subsection{Parsing details}
+
+By selecting one of the \code{-v} options, you can choose how much detail is printed. This is useful for checking what \TeXcount{} counts. The option \code{-showstate} shows the internal state and is for debugging purposes only.
+
+The output is colour coded with counted text coloured blue, other colours for other contexts. The colour coding is made using ANSI colour codes. These should work when printed directly to Linux xterm window, but need not work if piped through \code{more} or \code{less}: with \code{less} you need to use the option \code{-r} for the colours to be shown correcly.
+
+Under Windows or other operating systems, the ANSI colour codes cannot be expected to work, in which case the option \code{-nocol} (\code{-nc}) may be used to turn off colour coding; instead I recommend using HTML output which can be viewed in a browser.
+
+To print the details encoded as HTML code, use the option \code{-html}; alternatively, with \code{-htmlcore} only the HTML body is printed. On Windows, I suggest using the options \code{-html -v} to get full detail, save this to a HTML file, e.g. using
+\codeline{texcount -html -v texfile.tex > details.html}
+and then view the details.html file in a browser.
+
+\subsection{Summary information}
+
+By default, \TeXcount{} outputs counts of text words, header words, caption words, number of headers, number of floats/figures, number of inlined formulae, and number of displayed formulae, and lists each of these counts. To shorten this to a one-line format, specify \code{-brief}.
+
+To get \TeXcount{} to produce a total count, specify \code{-sum}: this will compute the sum of all words plus the number of formulae. A customized sum may be computed by speficying \code{-sum=n,n,\ldots} with up to seven numbers separated by commas giving the weight (0=don't count, 1=count once) of each of the seven counts: e.g. the default is equivalent to \code{-sum=1,1,1,0,0,1,1}. To count words only, use \code{-sum=1,1,1}. Higher weights may also be used, e.g. to count displayed formulae or floats/figures as a given number of words.
+
+Specifying \code{-sum} has two main effects: the cumulative sum is added to the output in verbose formats, and the sum is added to the summary. If combined with \code{-brief}, the option \code{-total} is automatically set, resulting in a one line output containing only the total sum.
+
+For adding subcounts e.g. by sections, the option \code{-sub} (or \code{-subcount}) may be used. By default, this produces subcounts by part, chapter, section and subsection which are listed in a brief format. One may, however, specify \code{-sub=} followed by \code{part}, \code{chapter}, \code{section}, or \code{subsection} (default when given without value). Break points which initiate a new subcount may also be specified within the \LaTeX{} document using \code{\%TC:break name}.
+
+If included files are included in the count (\code{-inc}), counts per file will be produced followed by a total count. To suppress per file counts, the option \code{-total} may be used.
+
+\subsection{Parsing options}
+
+\TeXcount{} uses regular expressions to identify words and macro options. By default, these are moderately strict, but can be relaxed using the option \code{-relaxed}. This allows more general document elements to be identified as words or macro options, which may sometimes be desired, but may also have undesirable effects, so check the verbose output to verify that \TeXcount{} has counted the appropriate elements.
+
+Macro options, i.e. \code{[\ldots]} after macros and macro parameters are ignored. Since \TeXcount{} has no specific knowledge of which macros take options, this is a general rule. In order to avoid that uses of [\ldots] that are not macro options are mistaken as such, \TeXcount{} makes some restrictions on what may be contained in such an option. By default, this restriction is relatively strict under the assumption that it is better to count a few macro options as words than risk large fragments of text to be ignored. However, if your document contains macro options with more complicated values (e.g. certain special characters or macros), using \code{-relaxed} may help handle these correctly.
+
+By default, \TeXcount{} does not allow special characters or macros to be part of words. This may cause problems if character modifiers or some special characters are used which are entered as macros. The \code{-relaxed} option makes the word recognition regular expression somewhat more general.
+
+\subsection{File inclusion}
+
+If the option \code{-inc} is used, \TeXcount{} will automatically count documents that are included (using \code{\bs{input}} or \code{\bs{include}}. As when giving a list of files to count, it will print the sum per file and a total sum at the end. The default is \code{-noinc} indicating that included documents are not counted.
+
+By default, \TeXcount{} assumes paths are relative to the working directory. Alternatively, an explicit path may be given using \code{-dir=path}. Note that the path must end in the path delimiter symbol (depending on the operating system, \code{/} under Linux, \textbackslash under Windows). If only \code{-dir} is used, the path of the first file given will be used.
+
+Note that included documents are analysed as separate files: the text of included documents are thus not included where the \code{\bs{input}} or \code{\bs{include}} is located. This has two consequences. First, since word counts are produced per file, subcounts f.ex. by chapter will only include the text in the same file as the \code{\bs{chapter}} macro. Secondly, if TC-instructions to \TeXcount{} are embedded in the \LaTeX{} document, e.g. defining additional macro handling rules, these take effect in the order they are parsed by \TeXcount{}. Since included documents are parsed after the parent document, definitions in the parent document will be in effect for the included documents; definitions made in the included documents will only be in effect for subsequently included documents, not in the parent or previously included documents.
+
+\section{What \TeXcount{} counts}
+
+The primary role is to count the words. It is not entirely clear what should be considered words, so I have had to make some decisions. A sequence of letters is certainly a word. I also count acronyms like `e.g.', dashed words like `over-all', and `it's' as one word. I have decided also to count numbers as words unless they are placed in a math environment.
+
+Mathematical formulae are not counted as words. Instead, \TeXcount{} counts the number of inline formulae (\code{\$maths\$}) and displayed formulae separately.
+
+Text in headers (\code{\bs{title}}, \code{\bs{section}}, etc.) are counted separately: it counts the number of headers as well as the number of words in headers.
+
+Floating environments (or potentially floating environments) such as tables and figures are not counted as text, even if the cells of a table may containt text. However, if they have captions, these will be counted separately much like headers were. By default, begin--end environments do not modify the parsing state: i.e. environments within the text are counted as text, etc. Rules for the most common environments, at least those that require non-default treatment, should be predefined, but you may have to add more rules if you use environments defined in packages or by yourself.
+
+Some macros are words by themselves: e.g. \code{\bs{LaTeX}}. These are counted as words, but you cannot expect \TeXcount{} to count something like \code{\bs{LaTeX}-word} or \code{\bs{\{}\bs{TeX}\bs{\}}count} as one word, although the above explanation inicates that it should: \TeXcount{} will in both cases evaluate the macro and the following text separately and thus count them as separate entities.
+
+
+\section{Macro handling rules}
+
+A very few rules are hard-coded, e.g. that text between \code{\bs{documentclass}} and \code{\bs{begin}\{document\}} is the preamble of the \LaTeX{} document which should be default not be included in the count. However, most of the rules consists fall into a few general categories:
+
+\begin{description}
+
+\item[macro]In its simplest form, this type of rule just tells how many parameters to ignore following the macro. More generally, one may specify the number of parameters a macro takes and how each of these should be handled. Options enclosed in \code{[]} before, between and after parameters are also ignored; this also applies to macros not specified here, so for a macro with no rule, immediately following \code{[]}-options will be ignored. (This type of rule was called an exclude rule in older versions of
+\TeXcount{}, the reason being that the rule originally only gave the number of
+parameters to ignore following a given macro.)
+
+\item[header]Some macros are specified to be counted as headers. This initially only indicates that the macro should cause the number of headers to be increased by one, but an additional rule is added to the macro-rule to count the following parameter as header text.
+
+\item[group]For groups enclosed by \code{\bs{begin}\{\textit{name}\}} and \code{\bs{end}\{\textit{name}\}}, there are rules specifying how the contents should be interpreted. A macro rule is added for \code{begin\textit{name}} (without the backslash!) which is \TeXcount{}'s internal representation of \code{\bs{begin}\{\textit{name}\}}. Some special characters will be ignored if following \code{\textit{name}}, e.g. \code{\bs{begin}\{equation*\}} will be treated as \code{\bs{begin}\{equation\}} since \code{*} is ignored.
+
+\item[macroword]This type of rule indicates that the macro itself represents one or more words. Initially, \code{\bs{LaTeX}} and \code{\bs{TeX}} are defined with values 1 indicating that each represents one word.
+
+\item[preamble]A few macros should be counted even if they are in the preamble. In particular, \code{\bs{title}\{title text\}} is counted as a header assuming it will later be used to produce a title.
+
+\item[float inclusion]Within floats (begin-end groups defined with parsing status $-1$) there may be texts that should still be counted: in particular captions. These are specified with the float inclusion rule.
+
+\item[file include]If \code{-inc} is specified, included files will also be parsed and the total presented at the end. Initially, \code{\bs{input}} and \code{\bs{include}} trigger file inclusion, but more file inclusion macros may be added.
+
+\end{description}
+
+A macro parameter is normally something on the form \code{\{something\}}; more generally it may be anything \TeXcount{} parses as a single unit (or token), e.g. a macro, but since \TeXcount{} parses word by word rather than character by character this may not always be correct if parameters are not \code{\{\}}-enclosed or macros.
+
+\subsection{Cautions!}
+
+Since the rules are of a relatively general nature, macros that have a great deal of flexibility are hard to deal with. In particular this applies to macros with a variable number of parameters or where the handling of the parameters are not constant.
+
+Also, \code{[]}-options following macros and macro parameters are always ignored, and \TeXcount{} gives no flexibility in over-ruling that. Since options are, by definition of the term, meant to be optional, extending \TeXcount{} to handle them would require extensive reprogramming as well as require much more detailed macro definition rules than what is now possible.
+
+More critically, since \TeXcount{} does not really know which macros take options or not, just assumes that options should never be included, there is some risk of misinterpreting as an option something that is not: e.g. \code{\bs{bf}[text]}. This is not likely to be a frequent problem. However, if something like \code{\bs{bf}[a lot of text]} gets ignored because it is considered an option, it can influence the word count substantially. I have therefore been somewhat restrictive with what (and how much) can go into an option.
+
+More advanced macros are not supported and can potentially confuse \TeXcount{}. In partcular, if you define macros that contain unbalanced begin--end groups, this will cause problems as \TeXcount{} needs to keep track of these to know where different groups start and end.
+
+
+\section{\TeXcount{} instructions in the \LaTeX{} document}
+
+It is possible to give some instructions to \TeXcount{} from within the
+\LaTeX{} document. The general format of these instructions are
+\codeline{\%TC:\textit{instruction [name] parameters}}
+where the name parameter is used with macro handling instructions to specify the macro or group name for which the rule applies.
+
+Note that the comment should be on a separate line, and that instructions are case sensitive.
+
+\subsection{Ignoring segments of the file}
+
+The TC-instruction \code{ignore}, later canceled by \code{endignore}, may be used to turn of all counting in a segment of the \LaTeX{} file. The ignored segment should thus be started by
+\codeline{\%TC:ignore}
+end ended by
+\codeline{\%TC:endignore}
+causing all text inbetween to be ignored. Note that \TeXcount{} still parses this text and may be affected by unbalanced brackets.
+
+\subsection{Adding subcount break points}
+
+By specifying \code{-sub}, \TeXcount{} can produce subcounts, e.g. per section. Alternatively, or in addition, explicit break points can be entered in the \LaTeX{} document using the TC-instruction \code{break}. These take the form:
+\codeline{\%TC:break \textit{title}}
+A title (or name) may be given to identify the break point.
+
+If you define new section macros or macros you wish to cause a break point, these may be specified using the TC-instruction \code{breakmacro}:
+\codeline{\%TC:breakmacro \textit{macro} \textit{label}}
+This defines the given macro to cause a break point, and uses the given label to indicate the type of break (e.g. Section, Chapter, etc.).
+
+\subsection{Adding macro handling rules}
+
+Adding your own macro handling rules is relatively simple. Although editing the script is possible, and not too difficult, this has the disadvantage that the modifications will be lost if updating to a new version of \TeXcount. A better and more flexible solution is to include instructions to \TeXcount{} in the \LaTeX{} documents, alternatively to make a definition file in which new macro handling rules are defined.
+
+Comment lines on the form
+\codeline{\%TC:\textit{instruction name parameters}}
+encountered in the parsed document are used to add macro handling rules. The instruction states what kind of rule, the name specifies the macro or begin-end group, and parameters specify the rule. Be aware that these are not syntax checked and may produce either Perl errors or incorrect results if entered incorrectly.
+
+Macro names should be entered with their full name starting with backslash. Internally, begin-end groups are represented using macro names \code{begin\textit{name}} without backslash, but rules for begin-end groups are specified through a separate TC-instruction.
+
+Note that macro handling rules are added successively throughout the session: i.e. if more files are parsed, handling rules from previously parsed files still apply. This has advantages as well as disadvantages. If you give a list of files with the rules specified in the first file, these rules will be applied to all the documents. However, if you use the \code{-inc} option, included files will be parsed only after \TeXcount{} has finished parsing the file in which they are included, so any rules specified in these will not apply to the initial document.
+
+The instructions may be one of the following:
+%
+\begin{description}\def\option[#1]{\item[\bigcode{#1}]}
+
+\option[macro]Define macro handling rule for the given macro. Takes one parameter which is either an integer or a \code{[]}-enclosed array of integers (e.g. \code{[0,1,0]}). An integer value $n$ indicates that the $n$ first parameters to the macro should be ignored. An array of length $n$ indicates that the first $n$ parameters should be handled, and the numbers of the array specifies the parsing status (see below) with which they should be parsed. Giving the number $n$ as parameter is equivalent to giving an array of $n$ zeroes (\code{[0,\ldots,0]}) as zero is the parsing status for ignoring text.
+
+\option[macroword]This defines the given macro to represent a certain number of words, where the number is given as the parameter.
+
+\option[header]Define macro to give a header. This is specified much as the macro rule. The added effect is that the header counter is increase by 1. Note, however, that you should specify a parameter array, otherwise none of the parameters will be parsed as header text. The parser status for header text is 2, so a standard header macro that uses the first parameter as header should be given the parameter \code{[2]}.
+
+\option[breakmacro]Specify that the given macro should cause a break point. Defining it as a header macro does not do this, nor is it required of a break point macro that it be a header (although I suppose in most cases of interest it will be).
+
+\option[group]This specifies a begin-end group with the given name (no backslash). It takes two further parameters. The first parameter speficies the macro rule following \code{\bs{begin}\{\textit{name}\}}. The second parameter specifies the parser status with which the contents should be parsed: e.g. $1$ for text (default rule), $0$ to ignore, $-1$ to specify a float (table, group, etc.) for which text should not be counted but captions should, $6$ and $7$ for inline or displated math.
+
+\option[floatinclude]This may be used to specify macros which should be counted when within float groups. The handling rules are spefified as for \code{macro}, but like with \code{header} an array parameter should be provided and parameters that should be counted as text in floats should be specified by parsing status 3. Thus, a macro that takes one parameter which should be counted as float/caption text should take the parameter \code{[3]}.
+
+\option[preambleinclude]The preamble, i.e. text between \code{\bs{documentclass}} and \code{\bs{begin}\{document\}}, if the document contains one, should generally not be included in the word count. However, there may be definitions, e.g. \code{\bs{title}\{title text\}}, that should still be counted. In order to be able to include these special cases, there is a preambleinclude rule in which one may speficy handling rules for macros within the preamble. Again, the rule is speficied like the \code{macro} rules, but since the default is to ignore text the only relevant rules to be specified require an array.
+
+\option[fileinclude]By default, \TeXcount{} does not automatically add files included in the document using \code{\bs{input}} or  \code{\bs{include}}, but inclusion may be turned on by using the option \code{-inc}. If other macros are used to include files, these may be specifed by adding fileinclude rules for these macros. The specification takes one parameter: 0 if the file name should be used as provided, 1 if file type \code{.tex} should be added to files without a file type, and 2 if the file tyle \code{.tex} should always be added.
+
+\end{description}
+
+The parser status is used to dictat how each parameter should be parsed. E.g. if a macro has its parameter set defined by \code{[1,0,1]}, it means the first and third parameters are counted as text words (parser status $1$) whereas the second is ignored (parser status $0$). Another case is \code{\bs{renewcommand}} which is defined as \code{[-3,-2]}: the first parameter is to be read without interpreting the contents (which is going to be a macro name whose macro handling rules should not be applied here), and the second parameter should be ignored without requiring that begin--end groups be balanced. The different parsing states are:
+%
+\begin{description}\def\option[#1]{\item[\quad\textbf{#1}]}
+\option[$0$:]ignore text, i.e. do not count, but will still parse the code;
+\option[$1$:]count as text (i.e. count words);
+\option[$2$:]count as header text;
+\option[$3$:]count as float/caption text;
+\option[$-1$:]float, ignore text but look for \code{floatinclude} macros;
+\option[$-2$:]stronger ignore which ignore begin--end groups, e.g. to use in macro definitions where begin--end groups need not be balanced;
+\option[$-3$:]even stronger ignore, handles macros as isolated tokens without handling their parameters, to use with macro definitions like \code{\bs{newcommand}} and \code{\bs{def}};
+\option[$-9$:]preamble, ignore text but look for \code{preambleinclude} macros.
+\end{description}
+
+Here are some examples together with corresponding macro definitions:
+%
+\codeline{%
+\%TC:macroword \bs{TeXcount} 1\\
+\bs{newcommand}\bs{TeXcount}\{\{\bs{TeX}\}count\}
+\\[8pt]
+\%TC:macro \bs{NB} 1\\
+\bs{newcommand}\bs{NB}[1]\{\bs{marginpar}\{\#1\}\}
+\\[8pt]
+\%TC:header \bs{newsection} [2,0]\\
+\bs{newcommand}\bs{newsection}[2]\{\bs{section}\{\#1\}\bs{label}\{sec:\#2\}\}
+\\[8pt]
+\%TC:group theorem 0 1\\
+\bs{newtheorem}\{theorem\}\{Theorem\}
+}
+%
+The predefined rules can easily be read off the script file: they are hash maps defined at the beginning of the script with names \code{TeXmacro}, \code{TeXheader}, etc.
+
+
+\section{License}
+
+The \TeXcount{} package---script and accompanying documents---is distributed
+under the \LaTeX{} Project Public License (LPPL)
+\codeline{http://www.latex-project.org/lppl.txt}
+which grants you, the user, the right to use, modify and distribute
+the script. However, if the script is modified, you must change its
+name or use other technical means to avoid confusion with the original script.
+
+
+\end{document}
