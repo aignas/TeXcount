@@ -1,9 +1,9 @@
 \documentclass{article}
-\usepackage[latin1]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{a4wide}
 \usepackage{times}
 \usepackage{listings}
+\usepackage{url}
 
 \include{macros}
 
@@ -11,10 +11,13 @@
 \lstset{basicstyle=\ttfamily\scriptsize,xleftmargin=2cm,xrightmargin=2cm}
 \lstset{basicstyle=\ttfamily\scriptsize,xleftmargin=2cm,xrightmargin=2cm}
 
-\title{\TeXcount\copyrightfootnote{}\\
+\title{%
+\LARGE
+\TeXcount\\
 \Large
 Perl script for counting words in \LaTeX{} documents\\
-Version \version}
+Version \version\copyrightfootnote
+}
 \author{Einar Andreas R{\o}dland}
 
 \begin{document}
@@ -26,7 +29,9 @@ Version \version}
 %
 }
 
-{\small\tableofcontents}
+{\scriptsize\tableofcontents}
+
+\pagebreak
 
 
 \section{What \TeXcount{} does}
@@ -67,7 +72,7 @@ Basically, \TeXcount{} has seven different counts plus an additional file count 
 \item[3. Caption words:] Words that occur in figure and table captions.
 \item[4. Header count:] This counts the number of headers, i.e. each \code{\bs{section}} counts as 1.
 \item[5. Figure/float count:] This counts the number of floats and figures, e.g. \code{table} and \code{figure} groups.
-\item[6. Inline forumlae:] This counts the number of inline formulae, i.e. \code{\$\ldots\$}.
+\item[6. Inline formulae:] This counts the number of inline formulae, i.e. \code{\$\ldots\$}.
 \item[7. Displayed formulae:] This counts the number of displayed formulae, e.g. \code{\bs{[}\ldots\bs{]}} or \code{equation} groups.
 \end{description}
 These are stored in an array and often referenced by their index: e.g. in the option \code{-sum=} which takes parameter values corresponding to counts 1 to 7, or \code{-tempate=} in which the counts are referred to by the indices 0 to 7.
@@ -148,19 +153,19 @@ Note that if no encoding is specified and \TeXcount{} left to guess the appropri
 
 In additional to the traditional Latin letters, A-Z, a number of letters are recognised by Unicode as part of the extension of the Latin letters. Some languages, however, use entirely different character sets.
 
-By default, \TeXcount{} has been set up to recognise all alphabets. However, there is a distinction between alphabets like the Latin, Greek, Cyrillic, etc. in which words consists of multiple letters, and languages like Chinese in which each character should be counted as a word. For simplicity, we refer to these as \em{alphabetic} characters and \em{logograms}.\footnote{%
-Actually, these names are not completely accurate. A logogram is a script which represents a word or `meaningful unit', but e.g. the Japanese kana are counted as words although they represent sound or syllables rather than meanings. Conversely, the Korean hangul are analysed as alphabetic, i.e. form words separated by spaces, although the characters actually consists of multiple letters formed into blocks.}
+By default, \TeXcount{} has been set up to recognise all alphabets. However, there is a distinction between alphabets like the Latin, Greek, Cyrillic, etc. in which words consists of multiple letters, and languages like Chinese in which each character should be counted as a word. For simplicity, we refer to these as \emph{alphabetic} characters and \emph{logograms}.\footnote{%
+Actually, these names are not completely accurate. A logogram is a script which represents a word or `meaningful unit', but e.g. the Japanese kana and Korean hangul are counted as words although they represent sound or syllables rather than meanings.}
 The options \code{-alphabets=} and \code{-logograms=} (or \code{-alpha=} and \code{-logo=} for short) allows you to specify which characters to use as either alphabetic letters or whole word characters. These take values that consist of Unicode properties separated by \code{,} or \code{+}. The default setting corresponds to
 \codeline{-alphabets=Digit,alphabetic}
 in which \code{alphabetic} is defined by \TeXcount{} as the Unicode \code{Alphabetic} class minus logographic script classes, and
 \codeline{-logograms=Ideographic,Hiragana,Katakana,Thai,Lao}
-which should cover Chinese characters (\code{Han}) as well as the Japanese characters (\code{Han} for the kanji, \code{Hiragana} and \code{Katakana} for the kana). Both options remove previous script settings, unless the list is prefixed by \code{+} in which case the scripts are added. 
+which should cover Chinese characters (\code{Han}) as well as the Japanese characters (\code{Han} for the kanji, \code{Hiragana} and \code{Katakana} for the kana). Both options remove previous script settings, unless the list is prefixed by \code{+} in which case the scripts are added: e.g. \code{-logograms=+cjkpunctuation} will add the CJK punctuation characters (defined by \TeXcount) to the set of counted characters.
 
-In addition to the Unicode properties, \TeXcount{} has added the properties \code{alphabetic}, \code{digit} and \code{alphanumeric}. These are more restrictive than their Unicode name-sakes: \code{alphabetic} excludes the default logographic character sets, and \code{digit} consists only of 0--9 unlike Unicode \code{Digit} which includes numerals from other scripts.
+Applicable Unicode properties/scripts include \code{Digit}, \code{Latin}, \code{Greek}, \code{Cyrillic}, \code{Hebrew}, \code{Arabic}, \code{Han}, \code{Katakana}, \code{Hiragana}, and more.\footnote{A more complete overview is available at Wikipedia: \url{http://en.wikipedia.org/wiki/Script_(Unicode)}.}
+
+In addition to the Unicode properties, \TeXcount{} has added a few additional character groups. The properties \code{alphabetic}, \code{digit} and \code{alphanumeric} are more restrictive than their Unicode name-sakes: \code{alphabetic} excludes the default logographic character sets, and \code{digit} consists only of 0--9 unlike Unicode \code{Digit} which includes numerals from other scripts. There is also \code{cjkpunctuation} which is intended to identify Chinese/Japanese/Korean punctuation.
 
 Note that the Unicode properties are case sensitive. The native Unicode properties start with capital letters, whereas the properties defined by \TeXcount{} are all lower case. Invalid properties will be ignored.
-
-Applicable Unicode properties include \code{Digit}, \code{Latin}, \code{Greek}, \code{Cyrillic}, \code{Hebrew}, \code{Arabic}, \code{Han}, \code{Katakana}, \code{Hiragana}, and more.
 
 The options \code{-chinese} and \code{-japanese} still exist and simply restrict the logographic character sets. In addition, \code{-chinese-only} and \code{-japanese-only} will exclude alphabetic words from the counting, equivalent to \code{-alphabets=} with no script properties given. In addition, these options will change the lists of file encodings \TeXcount{} will try if no encoding is given.
 
@@ -276,6 +281,14 @@ By default, the bibliography is not included in the word count. If the \code{-in
 
 Note that bibliography parsing may be non-trivial and depend on the bibliography style used, so the verbose output should be checked: some styles perform considerable formatting which may confuse \TeXcount{}. In addition, initials, page numbers, etc. will all be counted as words, which may result in a word count which is higher than intendet.
 
+\subsection{Adding or modifying macro handling rules}
+
+There are basically two different ways in which you can add additional macro handling rules, e.g. for your own macros, or modify existing rules: by modifying the \TeXcount{} script, or by adding the rules through \TeXcount{} instructions embedded in the \LaTeX{} code.
+
+The simplest method is to use \TeXcount{} instructions which are embedded in your \LaTeX{} document as \LaTeX{} comments on the format \code{\%TC:\textit{instruction}}. This approach is described in some detail in section \ref{sec:TC_addrule}.
+
+It is also possible to modify the \TeXcount{} code. The macro handling rules are mostly defined in the hash tables named \code{TeXmacro}, \code{TeXgroup}, etc., and editing these definitions is simple and does not required in-depth knowledge of Perl. A brief overview of the \TeXcount{} code is provided in section \ref{sec:code}. 
+
 \subsection{Cautions!}
 
 Since the rules are of a relatively general nature, macros that have a great deal of flexibility are hard to deal with. In particular this applies to macros with a variable number of parameters or where the handling of the parameters are not constant.
@@ -319,11 +332,13 @@ Note that you have to insert line shifts yourself. \TeXcount{} will only insert 
 \section{\TeXcount{} instructions in the \LaTeX{} document}
 
 It is possible to give some instructions to \TeXcount{} from within the
-\LaTeX{} document. The general format of these instructions are
-\codeline{\%TC:\textit{instruction [name] parameters}}
-where the name parameter is used with macro handling instructions to specify the macro or group name for which the rule applies.
+\LaTeX{} document. The general format of these instructions is
+\codeline{\%TC:\textit{instruction name parameters}}
+where \textit{name} is used with macro handling instructions to specify the macro or group name for which the rule applies and \textit{parameters} specify the details of how the macro and its parameters should be interpreted. In addition, there are some \TeXcount{} instructions that do not follow this syntax:
+%
+\input{sub_tc_other}
 
-Note that the comment should be on a separate line, and that instructions are case sensitive.
+The inital implementation of \TeXcount{} instructions required that the format was strictly adhered to: the comments should be a separate line and the instruction name was case sensitive. In particular the \code{ignore} instruction was problematic. However, in more recent version, at least from version 2.3, these \TeXcount{} instructions should are more robust.
 
 \subsection{Ignoring segments of the file}
 
@@ -331,7 +346,7 @@ The TC-instruction \code{ignore}, later canceled by \code{endignore}, may be use
 \codeline{\%TC:ignore}
 and ended by
 \codeline{\%TC:endignore}
-causing all text inbetween to be ignored. Note that \TeXcount{} still parses this text and may be affected by unbalanced brackets.
+causing all text inbetween to be ignored.\footnote{In older versions, \TeXcount{} would still parse this text and might thus be affected by unbalanced brackets. As of version 2.3, however, this should be fixed to make the ignore instruction more robust.}
 
 \subsection{Adding subcount break points}
 
@@ -343,7 +358,7 @@ If you define new section macros or macros you wish to cause a break point, thes
 \codeline{\%TC:breakmacro \textit{macro} \textit{label}}
 This defines the given macro to cause a break point, and uses the given label to indicate the type of break (e.g. Section, Chapter, etc.).
 
-\subsection{Adding macro handling rules}
+\subsection{Adding macro handling rules}\label{sec:TC_addrule}
 
 Adding your own macro handling rules is relatively simple. Although editing the script is possible, and not too difficult, this has the disadvantage that the modifications will be lost if updating to a new version of \TeXcount. A better and more flexible solution is to include instructions to \TeXcount{} in the \LaTeX{} documents, alternatively to make a definition file in which new macro handling rules are defined.
 
@@ -361,17 +376,26 @@ The instructions may be one of the following:
 
 The parser status is used to dictate how each parameter should be parsed. E.g. if a macro has its parameter set defined by \code{[1,0,1]}, it means the first and third parameters are counted as text words (parser status $1$) whereas the second is ignored (parser status $0$). Another case is \code{\bs{renewcommand}} which is defined as \code{[-3,-2]}: the first parameter is to be read without interpreting the contents (which is going to be a macro name whose macro handling rules should not be applied here), and the second parameter should be ignored without requiring that begin--end groups be balanced. The different parsing states are:
 %
-\begin{description}\def\option[#1]{\item[\quad\textbf{#1}]}
-\option[$0$:]ignore text, i.e. do not count, but will still parse the code;
-\option[$1$:]count as text (i.e. count words);
-\option[$2$:]count as header text;
-\option[$3$:]count as float/caption text;
-\option[$-1$:]float, ignore text but look for \code{floatinclude} macros;
-\option[$-2$:]stronger ignore which ignore begin--end groups, e.g. to use in macro definitions where begin--end groups need not be balanced;
-\option[$-3$:]even stronger ignore, handles macros as isolated tokens without handling their parameters, to use with macro definitions like \code{\bs{newcommand}} and \code{\bs{def}};
-\option[$-4$:]ignore all, including unbalanced brackets (used by \code{\%TC:ignore} and the \code{verbatim} environment);
-\option[$-9$:]preamble, ignore text but look for \code{preambleinclude} macros.
+\begin{description}
+\def\optionhead#1{\item[\textbf{#1}]}
+\def\option #1:{\item[{\makebox[7mm][r]{#1:}}]}
+\optionhead{States for ignoring text}
+\option 0: ignore text, i.e. do not count, but will still parse the code;
+\option -1: float, ignore text but look for \code{floatinclude} macros;
+\option -2: stronger ignore which ignore begin--end groups, e.g. to use in macro definitions where begin--end groups need not be balanced;
+\option -3: even stronger ignore, handles macros as isolated tokens without handling their parameters, to use with macro definitions like \code{\bs{newcommand}} and \code{\bs{def}};
+\option -4: ignore all, including unbalanced brackets (used by \code{\%TC:ignore} and the \code{verbatim} environment);
+\option -9: preamble, ignore text but look for \code{preambleinclude} macros.
+\optionhead{States for counting words}
+\option 1: count as text (i.e. count words);
+\option 2: count as header text;
+\option 3: count as float/caption text;
+\optionhead{Transitional states (internal/limited use)}
+\option 6: count as inlined math formulae;
+\option 7: count as displayed math formulae;
 \end{description}
+
+The two transitional states may be used to speficy rules for begin--end group contents, but not for macro parameters. They are transitional in the sense that the contents is parsed using the 0 state which ignores the contents.
 
 Here are some examples together with corresponding macro definitions:
 
@@ -454,11 +478,64 @@ There are some things that may be modified quite easily even without knowing Per
 \end{description}
 
 
+\section{Modifying the \TeXcount{} script}\label{sec:code}
+
+\TeXcount{} is written in Perl, and although hardly the best structured and documented code ever seen, I have tried to structure and document it somewhat. In particular, some parts of the code have been written with modifications in mind.
+
+Here's a quick walk-through of the code structure and comments on how easily the code may be modified. Some parts of the code are marked as \emph{CMD specific}. There are two version of the script: the CMD version intended for command line use, and the CGI version used with the web interface. The one you have is the CMD version.
+
+\begin{description}
+
+\item[\em INITIAL SETUP:] \textit{These set up global variables prior to execution.}
+
+\item[Settings and setup variables:] The start of the script sets of initial settings and variables. Many of these may be modified by command line options, but if you want to change the default behaviour these may be changed. However, note that there is a list \code{@StartupOptions} intended for this: initially, it is empty, but this is probably the simplest place the change startup options.
+
+\item[Internal states:] As of version 2.3, internal state identifiers (which are numerical codes) have been defined as \code{STATUS}, \code{TOKEN} and \code{CNT} variables, and these are also defined here. A few subroutines for interpreting these states have been included here, although most subroutines are defined after the main code, since they are intimately tied to the state's numerical values. None of these are intended to be modified.
+
+\item[Styles:] The style definitions basically define which elements to print for each of the verbosity levels. These map element names to ANSI colour codes. When used with HTML, the element names are used as tag classes. If you wish to change the ANSI colour scheme, or change which elements are written in each verbosity option, these may be changed.
+
+\item[Word pattern definitions:] This section contains regular expression patterns for identifying words and macro options. In addition, the additional character classes defined by \TeXcount{} are defined here. If you have special needs or wishes, modifying these definitions may be an option.
+
+\item[\TeXcount{} parsing rules:] This is the section in which the main rules for interpreting the \LaTeX{} code is specified: the exception is a few hard-coded rules that do not follow these general patterns. These are hashes that map the macro or group name to the macro handling rules. First, the default rules are defined, then packages specific rules are defined.
+
+\item[\em MAIN:] \textit{This is the top-level code which gets executed. All else is done through calls to subroutines.}
+
+\item[Main \TeXcount{} code:] This is the main code that is run. It is very simple: just a call to the method \code{MAIN} passing the command line options.
+
+\item[\em SUBROUTINES:] \textit{The subroutines are organised into blocks. Subroutines names use capital letters or initials if they are main routines (like public in other languages) to be used at the top-level, lower case if they may be used throughout but are considered to be lower-level subroutines, prefixed by one or two underscores (\_) if used only within the block.}
+
+\item[Main routines:] The \code{MAIN} routine gives the general processing flow. This in turn calls routines to parse to command line options, process/apply the options, parse the \TeX/\LaTeX{} files, and finally summarise the final results. The main routines are CMD specific.
+
+\item[CMD specific subroutines:] These are subroutine versions that are CMD specific, e.g. file inclusion and ANSI colours. Their location is somewhat illogical: logically, they might belong later together with related subroutines, but have been placed this early because they are specific to the CMD (or CGI) version.
+
+\item[Option handling:] After parsing the options, the option values are processed using these subroutines. Some of the option handling operations call on global variables, whereas some are more hard-coded. Like the global variables, if you have special wishes or needs, there may be parts here that can be modified quite easily to change default settings or effects of specific options.
+
+\item[\TeX{} object:] The main role of the \code{TeX} object (which is technically not an object in the ordinary sense but just a hash) is to be a container object which links to the \TeX/\LaTeX{} code, the word count object, etc. The \code{TeX} object pertaining to any parsed \TeX/\LaTeX{} file is passed along from subroutine to subroutine, usually called \code{\$tex}. The \code{Main} object produced by \code{getMain} is a simple substitute for the \code{TeX} object for use when none is available, e.g. to catch errors not specific to any particular \code{TeX} object. 
+
+\item[File reading routines:] These are used to read files and STDIN.
+
+\item[Parsing routines:] These contain the main routines for parsing the \TeX/\LaTeX{} code. The main worker method is the \code{\_{}parse\_{}unit} which parses a block of code: the \emph{unit}. A unit of code may be a begin-end group (environment), a \{\} separated group, a macro option or parameter, etc. The parsing of one unit is determined by the parsing status, which is passed to the parsing method, and the end marker which indicates which token marks the end of the unit. Different subroutines are then used to process the different types of code: macros, begin-end groups, TC instructions, etc. Amongst these routines are also routines for converting the parsed code into tokens, which is done one token at the time which is then removed from the start of the code.
+
+\item[Count object and routines:] The count object contains the counters as an array, plus titles and labels; in addition it can contain a list of subcounts which are themselves count objects. The count object is used for each file, but also to summarise multiple files, and region counts within files (e.g. per section). The \code{TeX} object contains an active count object to which newly counted words, equations, etc. get added. However, each \code{TeX} object also has a summary count object which will contain the final sum. 
+
+\item[Output routines:] First, there are some routines for general output, i.e. independent of specific \code{TeX} objects. There are then some routines for formatting output, e.g. for the verbose output. There are also routines for printing count summaries in various formats. A special set of routines exist for printing the verbose output itself, and some of these are also involved in the parsing.
+
+\item[Help functions:] These routines are used to print help.
+
+\item[HTML functions:] These are routines for producing HTML output. In particular, the HTML style is defined here and may be easily modified.
+
+\item[Text data:] Some texts are not hard-coded into the script, but added as text data at the end. There are some routines defined to handle the text data, and then the text data itself.
+
+\end{description}
+
+Perl will first process the setup section which defines global variables, arrays and hashes. It then executes the main section (consisting of the call to \code{MAIN}), whereafter it exits. The subroutines and text data follow after the \code{exit}.
+
+
 \section{License}
 
 The \TeXcount{} package---script and accompanying documents---is distributed
 under the \LaTeX{} Project Public License (LPPL)
-\codeline{http://www.latex-project.org/lppl.txt}
+\codeline{\url{http://www.latex-project.org/lppl.txt}}
 which grants you, the user, the right to use, modify and distribute
 the script. However, if the script is modified, you must change its
 name or use other technical means to avoid confusion with the original script.

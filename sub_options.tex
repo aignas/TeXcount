@@ -77,7 +77,11 @@
 
 \option[-jp, -japanese]Turn on Japanese mode in which Japanese characters (kanji and kana) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-JP) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}.
 
-\option[-chinese-only, ..., -japanese-only]As options \code{-chinese}, ..., \code{-japanese}, but also excludes letter-based words.
+\option[-kr, -korean]Turn on Korean mode in which Korean characters (hangul and han) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-KR) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}. \emph{NB: Support for Korean is experimental.}
+
+\option[-kr-words, -korean-words]Korean mode in which hangul words are counted (i.e. as words separated by spaces) rather than characters. Han characters are still counted as characters. See also \code{-korean}. \emph{NB: Support for Korean is experimental.}
+
+\option[-chinese-only, ..., -korean-words-only]As options \code{-chinese}, ..., \code{-korean-words}, but also excludes other alphabets (e.g. letter-based words) and logographic characters.
 
 \option[-char, -letter]Count letters instead of words. This count does not include spaces.
 

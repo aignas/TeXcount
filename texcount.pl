@@ -8,8 +8,8 @@ use utf8; # Because the script itself is UTF-8 encoded
 
 ##### Version information
 
-my $versionnumber="2.3.beta";
-my $versiondate="2011 Mar 09";
+my $versionnumber="2.3";
+my $versiondate="2011 Jul 30";
 
 ###### Set global settings and variables
 
@@ -32,8 +32,8 @@ my $htmlstyle=0; # Flag to print HTML
 my $encoding=undef; # Selected input encoding (default will be guess)
 my @encodingGuessOrder=qw/ascii utf8 latin1/; # Encoding guessing order
 my $outputEncoding; # Encoding used for output
-my @AlphabetScripts=qw/Digit alphabetic/; # Letters minus logograms: defined later
-my @LogogramScripts=qw/Ideographic Katakana Hiragana Thai Lao/; # Scripts counted as whole words
+my @AlphabetScripts=qw/Digit Is_alphabetic/; # Letters minus logograms: defined later
+my @LogogramScripts=qw/Ideographic Katakana Hiragana Thai Lao Hangul/; # Scripts counted as whole words
 my $WordPattern; # Regex matching a word (defined in apply_language_options())
 
 # Parsing rules options
@@ -52,6 +52,8 @@ my $verbose=0; # Level of verbosity
 my $showcodes=1; # Flag to show overview of colour codes (2=force)
 my $showstates=0; # Flag to show internal state in verbose log
 my $showsubcounts=0; # Write subcounts if #>this, or not (if 0)
+my $separatorstyleregex='^word'; # Styles (regex) after which separator should be added
+my $separator=''; # Separator to add after words/tokens
 
 # Final summary output options
 my $showVersion=0; # Indicator that version info be included (1) or not (-1)
@@ -72,9 +74,6 @@ my %WordFreq; # Hash for counting words
 # String data storage
 my $STRINGDATA;
 
-# Temporary variables to be used various places
-my @tmp;
-
 ###### Set CMD specific settings and variables
 
 ## Preset command line options
@@ -93,13 +92,141 @@ my $_STDIN_="<STDIN>"; # File name to represent STDIN
 # CMD specific settings
 $Text::Wrap::columns=76; # Page width for wrapped output
 
-###### Set global definitions
+###### Set status identifiers and methods
 
-### Count labels
+
+### Counter indices from 0 to $SIZE_CNT-1
+#   0: Number of files
+#   1: Text words
+#   2: Header words
+#   3: Caption words
+#   4: Number of headers
+#   5: Number of floating environments
+#   6: Number of inlined math
+#   7: Number of displayed math
+my $SIZE_CNT=8;
+my $CNT_FILE=0;
+my $CNT_WORDS_TEXT=1;
+my $CNT_WORDS_HEADER=2;
+my $CNT_WORDS_CAPTION=3;
+my $CNT_COUNT_HEADER=4;
+my $CNT_COUNT_FLOAT=5;
+my $CNT_COUNT_INLINEMATH=6;
+my $CNT_COUNT_DISPLAYMATH=7;
+
 # Labels used to describe the counts
 my @countlabel=('Files','Words in text','Words in headers',
       'Words in float captions','Number of headers','Number of floats',
       'Number of math inlines','Number of math displayed');
+
+### Parsing statuses
+## Note that status numbers are used in rule definitions and should
+## not be changed.
+#
+## Status for regions that should not be counted
+#    0 = exclude from count
+## Statuses for regions in which words should not be counted
+#   -1 = float (exclude, but include captions)
+#   -2 = strong exclude, ignore begin-end groups
+#   -3 = stronger exclude, do not parse macro parameters
+#   -4 = ignore everything except end marker: even {
+#   -9 = preamble (between \documentclass and \begin{document})
+## Statuses for regions in which words should be counted
+#    1 = text
+#    2 = header text
+#    3 = float text
+## Status change: not used in parsing, but to switch status then ignore contents
+#    6 = switch to inlined math
+#    7 = switch to displayed math
+## Note that positive statuses must correspond to CNT codes!
+#
+my $STATUS_IGNORE=0;
+my $STATUS_FLOAT=-1;
+my $STATUS_EXCLUDE_STRONG=-2;
+my $STATUS_EXCLUDE_STRONGER=-3;
+my $STATUS_EXCLUDE_ALL=-4;
+my $STATUS_PREAMBLE=-9;
+my $STATUS_TEXT=1;
+my $STATUS_TEXT_HEADER=2;
+my $STATUS_TEXT_FLOAT=3;
+my $STATUS_TO_INLINEMATH=6;
+my $STATUS_TO_DISPLAYMATH=7;
+
+# When combining two statuses, use the first one; list must be complete!
+my @STATUS_PRIORITY_LIST=(-4,-3,-2,-1,0,-9,3,2,1);
+
+# Status: is a text status..."include status" is more correct
+sub status_is_text {
+  my $st=shift @_;
+  return ($st>0);
+}
+
+# Status: get CNT corresponding to text status (or undef)
+sub status_text_cnt {
+  my $st=shift @_;
+  if ($st==$STATUS_TEXT) {return $CNT_WORDS_TEXT;}
+  if ($st==$STATUS_TEXT_HEADER) {return $CNT_WORDS_HEADER;}
+  if ($st==$STATUS_TEXT_FLOAT) {return $CNT_WORDS_CAPTION;}
+  return undef;
+}
+
+# Status: is an exclude status
+sub status_is_exclude {
+  my $st=shift @_;
+  return ($st<0);
+}
+
+# Status: \begin and \end should be processed
+sub status_inc_envir {
+  my $st=shift @_;
+  return ($st>-2);
+}
+
+# Map status number to CNT value
+sub status_to_cnt {
+  my $st=shift @_;
+  if ($st==$STATUS_TO_INLINEMATH) {return $CNT_COUNT_INLINEMATH;}
+  if ($st==$STATUS_TO_DISPLAYMATH) {return $CNT_COUNT_DISPLAYMATH;}
+  return undef;
+}
+
+# Status as text
+sub status_to_text {
+  my $st=shift @_;
+  return $st;
+}
+
+# Status as text
+sub status_to_style {
+  return 'word'.status_to_text(@_);
+}
+
+### Token types
+#  -1: space
+#   0: comment
+#   1: word (or other forms of text or text components)
+#   2: symbol (not word, e.g. punctuation)
+#   3: macro
+#   4: curly braces {}
+#   5: brackets []
+#   6: maths
+#   9: line break in file
+# 999: end of line or blank line
+# 666: TeXcount instruction (%TC:instruction)
+my $TOKEN_SPACE=-1;
+my $TOKEN_COMMENT=0;
+my $TOKEN_WORD=1;
+my $TOKEN_SYMBOL=2;
+my $TOKEN_MACRO=3;
+my $TOKEN_BRACE=4;
+my $TOKEN_BRACKET=5;
+my $TOKEN_MATH=6;
+my $TOKEN_LINEBREAK=9;
+my $TOKEN_TC=666;
+my $TOKEN_END=999;
+
+###### Set global definitions
+
 
 ### Break points
 # Definition of macros that define break points that start a new subcount.
@@ -170,28 +297,34 @@ my $MacroOptionPattern=$NamedMacroOptionPattern{'default'};
 my %NamedEncodingGuessOrder;
 $NamedEncodingGuessOrder{'chinese'}=[qw/utf8 gb2312 big5/];
 $NamedEncodingGuessOrder{'japanese'}=[qw/utf8 euc-jp iso-2022-jp jis shiftjis/];
+$NamedEncodingGuessOrder{'korean'}=[qw/utf8 euc-kr iso-2022-kr/];
 
-### Word regexp pattern list
+
+###### Define character classes (alphabets)
+
+
+### Character classes to use as Unicode properties
 
 # Character group representing digits 0-9 (more restrictive than Digits)
-sub digit { return <<END;
+sub Is_digit { return <<END;
 0030\t0039
 END
 }
 
 # Character group representing letters (excluding logograms)
-sub alphabetic { return <<END;
+sub Is_alphabetic { return <<END;
 +utf8::Alphabetic
 -utf8::Ideographic
 -utf8::Katakana
 -utf8::Hiragana
 -utf8::Thai
 -utf8::Lao
+-utf8::Hangul
 END
 }
 
 # Character group representing letters (excluding logograms)
-sub alphanumeric { return <<END;
+sub Is_alphanumeric { return <<END;
 +utf8::Alphabetic
 +utf8::Digit
 -utf8::Ideographic
@@ -199,9 +332,38 @@ sub alphanumeric { return <<END;
 -utf8::Hiragana
 -utf8::Thai
 -utf8::Lao
+-utf8::Hangul
 END
 }
 
+# Character class for punctuation excluding special characters
+sub Is_punctuation { return <<END;
++utf8::Punctuation
+-0024\t0025
+-005c
+-007b\007e
+END
+}
+
+# Character group representing CJK characters
+sub Is_cjk { return <<END;
++utf8::Han
++utf8::Katakana
++utf8::Hiragana
++utf8::Hangul
+END
+}
+
+# Character group for CJK punctuation characters
+sub Is_cjkpunctuation { return <<END;
+3000\t303f
+2018\t201f
+ff01\tff0f
+ff1a\tff1f
+ff3b\tff3f
+ff5b\tff65
+END
+}
 
 ###### Define core rules
 
@@ -226,10 +388,9 @@ my %TeXpackageinc=('\usepackage'=>1);
 # value is the status (1=text, 2=header, etc.) they should be interpreted as.
 # Note that only the first unit (token or {...} block) is counted.
 my %TeXpreamble=(
-     '\title'=>[2],
      '\newcommand'=>[-3,-3],'\renewcommand'=>[-3,-3],
-     '\newenvironment'=>[-3,-3,-3], 'renewenvironment'=>[-3,-3,-3],
-     );
+     '\newenvironment'=>[-3,-3,-3], '\renewenvironment'=>[-3,-3,-3],
+     '\title'=>[2]);
 
 ### In floats: include only specific macros
 # Macros used to identify caption text within floats.
@@ -254,7 +415,7 @@ my %TeXmacro=(%TeXheader,%TeXpreamble,%TeXfloatinc,
      '\documentclass'=>1,'\documentstyle'=>1,'\usepackage'=>1, '\hyphenation'=>1,
      '\pagestyle'=>1,'\thispagestyle'=>1, '\pagenumbering'=>1,'\markboth'=>1, '\markright'=>1,
      '\newcommand'=>[-3,-3],'\renewcommand'=>[-3,-3],
-     '\newenvironment'=>[-3,-3,-3], 'renewenvironment'=>[-3,-3,-3],
+     '\newenvironment'=>[-3,-3,-3], '\renewenvironment'=>[-3,-3,-3],
      '\newfont'=>2,'\newtheorem'=>2,'\bibliographystyle'=>1, '\bibliography'=>1,
      '\parbox'=>1, '\marginpar'=>[3],'\makebox'=>0, '\raisebox'=>1, '\framebox'=>0,
      '\newsavebox'=>1, '\sbox'=>1, '\savebox'=>2, '\usebox'=>1,'\rule'=>2,
@@ -298,11 +459,10 @@ my %TeXmacroword=('\LaTeX'=>1,'\TeX'=>1);
 # Note that some environments may only exist within math-mode, and
 # therefore need not be defined here: in fact, they should not as it
 # is not clear if they will be in inlined or displayed math.
-#
 my %TeXgroup=('document'=>1,'letter'=>1,'titlepage'=>0,
      'center'=>1,'flushleft'=>1,'flushright'=>1,
      'abstract'=>1,'quote'=>1,'quotation'=>1,'verse'=>1,'minipage'=>1,
-     'verbatim'=>-4,
+     'verbatim'=>-4,'tikzpicture'=>-4,
      'description'=>1,'enumerate'=>1,'itemize'=>1,'list'=>1,
      'theorem'=>1,'lemma'=>1,'definition'=>1,'corollary'=>1,'example'=>1,
      'math'=>6,'displaymath'=>7,'equation'=>7,'eqnarray'=>7,'align'=>7,
@@ -315,7 +475,6 @@ my %TeXgroup=('document'=>1,'letter'=>1,'titlepage'=>0,
 # be used as is; if it is 1, the filetype .tex will be added if the
 # filename is without filetype; if it is 2, the filetype .tex will be added.
 my %TeXfileinclude=('\input'=>1,'\include'=>2);
-
 
 ###### Define package specific rules
 
@@ -372,7 +531,7 @@ sub MAIN {
   } elsif ($showcodes>1) {
     conditional_print_help_style();
   } else {
-    print_error($Main,'No files specified.','p','error');
+    error($Main,'No files specified.');
   }
   Close_Output();
 }
@@ -536,6 +695,8 @@ sub parse_options_output {
   elsif ($arg eq '-nosplit') {$optionFast=0;}
   elsif ($arg eq '-showver') {$showVersion=1;}
   elsif ($arg eq '-nover') {$showVersion=-1;}
+  elsif ($arg =~/^-nosep(s|arators?)?$/ ) {$separator='';}
+  elsif ($arg =~/^-sep(arators?)?=(.*)$/ ) {$separator=$2;}
   else {return 0;}
   return 1;
 }
@@ -636,7 +797,7 @@ sub parse_file {
   foreach my $f (@filelist) {
     _add_file($filetotalcount,$f,"Included file: ".$f);
   }
-  if (!$totalflag && get_count($filetotalcount,0)>1) {
+  if (!$totalflag && get_count($filetotalcount,$CNT_FILE)>1) {
     if ($htmlstyle) {formatprint("Sum of files: ".$file."\n",'h2');}
     print_count($filetotalcount,'sumcount');
   }
@@ -651,7 +812,7 @@ sub _add_file {
   my $fpath=$f;
   $fpath=~s/^((.*[\\\/])?)[^\\\/]+$/$1/;
   if (!defined $tex) {
-    print_error($Main,"File not found or not readable: ".$f);
+    error($Main,'File not found or not readable: '.$f);
   } else {
     parse($tex);
     my $filecount=next_subcount($tex);
@@ -673,7 +834,7 @@ sub include_file {
   my $fpath=$workdir.$fname;
   if ($includeTeX==2) {
     my $bincode=read_binary($fpath) || BLOCK {
-      print_error($tex,"File ".$fpath." not found.");
+      error($tex,"File $fpath not found.");
       return;
     };
     flush_next($tex);
@@ -721,8 +882,8 @@ sub Apply_Options {
   } elsif (ref(find_encoding($encoding))) {
     if (!$htmlstyle) {$outputEncoding=$encoding;}
   } else {
-    print_error($Main,"WARNING: Unknown encoding ".$encoding." ignored.");
-    print STDERR "Valid encodings are: ",wrap("","",join(', ',Encode->encodings(":all"))),"\n";
+    error($Main,"Unknown encoding $encoding ignored.");
+    error_details($Main,'Valid encodings are: '.wrap('','',join(', ',Encode->encodings(':all'))));
     $encoding=undef;
   }
   if (!defined $outputEncoding) {$outputEncoding='utf8';}
@@ -742,11 +903,12 @@ sub set_script_options {
   foreach my $scr (@scripts) {
     $scr=~tr/_/ /;
     if ($scr eq 'Alphabetic') {
-      set_warning('Warning: Using alphabetic instead of Unicode class Alphabetic');
+      warning($Main,'Using alphabetic instead of Unicode class Alphabetic');
       $scr='alphabetic';
     }
+    if ($scr=~/^[a-z]/) {$scr='Is_'.$scr;}
     if (is_property_valid($scr)) {push @$scriptset,$scr;}
-    else {print_error($Main,"WARNING: Unknown script $scr ignored.");}
+    else {error($Main,"Unknown script $scr ignored.");}
   }
 }
 
@@ -759,9 +921,11 @@ sub is_property_valid {
 # Set language option, return language if applied, undef if not
 sub set_language_option {
   my $language=shift @_;
-  if ($language=~/^count\-?all$/) {
-    @AlphabetScripts=qw/Digit alphabetic/;
-    @LogogramScripts=qw/Ideographic Katakana Hiragana Thai Lao/;
+  if ($language=~/^(count\-?)all$/) {
+    @AlphabetScripts=qw/Digit Is_alphabetic/;
+    @LogogramScripts=qw/Ideographic Katakana Hiragana Thai Lao Hangul/;
+  } elsif ($language=~/^words(-?only)?$/) {
+    @LogogramScripts=();
   } elsif ($language=~/^(ch|chinese|zhongwen)(-?only)?$/) {
     @LogogramScripts=qw/Han/;
     if (defined $2) {$LetterPattern=undef;}
@@ -772,6 +936,21 @@ sub set_language_option {
     if (defined $2) {$LetterPattern=undef;}
     @encodingGuessOrder=@{$NamedEncodingGuessOrder{'japanese'}};
     return 'japanese';
+  } elsif ($language=~/^(kr|korean)(-?only)?$/) {
+    @LogogramScripts=qw/Han Hangul/;
+    if (defined $2) {$LetterPattern=undef;}
+    @encodingGuessOrder=@{$NamedEncodingGuessOrder{'korean'}};
+    return 'korean';
+  } elsif ($language=~/^(kr|korean)-?words?(-?only)?$/) {
+    if (defined $2) {
+      @AlphabetScripts=qw/Hangul/;
+      @LogogramScripts=qw/Han/;
+    } else {
+      @AlphabetScripts=qw/Digit Is_alphabetic Hangul/;
+      @LogogramScripts=qw/Han Katakana Hiragana Thai Lao/;
+    }
+    @encodingGuessOrder=@{$NamedEncodingGuessOrder{'korean'}};
+    return 'korean-words';
   } elsif ($language=~/^(char|character|letter)s?(-?only)?$/) {
     @WordPatterns=($NamedWordPattern{'letters'});
     if (defined $2) {@LogogramScripts=();}
@@ -786,6 +965,7 @@ sub set_language_option {
 
 # Apply language options
 sub apply_language_options {
+  my @tmp;
   if (defined $LetterPattern && @AlphabetScripts && scalar @AlphabetScripts>0) {
     @tmp=@AlphabetScripts;
     foreach (@tmp) {$_='\\p{'.$_.'}';}
@@ -802,7 +982,7 @@ sub apply_language_options {
     push @WordPatterns,'['.join('',@tmp).']';
   }
   if (scalar @WordPatterns==0) {
-    print_error($Main,'No script (alphabets or logograms) defined. Using fallback mode.');
+    error($Main,'No script (alphabets or logograms) defined. Using fallback mode.');
     push @WordPatterns,'\\w+';
   }
   $WordPattern=join '|',@WordPatterns;
@@ -866,6 +1046,7 @@ sub getMain {
   my %main=();
   $main{'errorcount'}=0;
   $main{'errorbuffer'}=[];
+  $main{'warnings'}={};
   return \%main;
 }
 
@@ -923,7 +1104,7 @@ sub _TeXcode_blank {
   $countsum->{'TeXcode'}=\%TeX;
   my $count=new_count("_top_");
   $TeX{'subcount'}=$count;
-  inc_count(\%TeX,0);
+  inc_count(\%TeX,$CNT_FILE);
   my @countlist=();
   $countsum->{'subcounts'}=\@countlist;
   return \%TeX;
@@ -934,7 +1115,8 @@ sub _TeXcode_setcode {
   my ($tex,$bincode)=@_;
   $tex->{'texcode'}=_prepare_texcode($tex,$bincode);
   $tex->{'texlength'}=length($tex->{'texcode'});
-#  if ($texcode =~ /([[:^ascii:]])/) {set_warning("Code contains non-ASCII characters.");}
+  # TODO: Comment out this test
+  if ($tex->{'texcode'} =~ /([[:^ascii:]])/) {warning($tex,"Code contains non-ASCII characters.");}
 }
 
 # Decode and return TeX/LaTeX code
@@ -959,12 +1141,12 @@ sub _decode_texcode {
       $texcode=$decoder->decode($texcode);
     };
     if ($@) {
-      print_error($tex,"ERROR: Decoding file/text using the ".$decoder->name." encoding failed.");
+      error($tex,'Decoding file/text using the '.$decoder->name.' encoding failed.');
     }
   } else {
     ($texcode,$decoder)=_guess_encoding($texcode);
     if (!ref($decoder)) {
-      print_error($tex,"Warning: Failed to identify encoding or incorrect encoding specified.");
+      error($tex,'Failed to identify encoding or incorrect encoding specified.');
       $tex->{'encoding'}='[FAILED]';
       return $texcode;
     }
@@ -972,7 +1154,7 @@ sub _decode_texcode {
   __set_encoding_name($tex,$decoder->name);
   $texcode =~ s/^\x{feff}//; # Remove BOM (relevant for UTF only)
   if ($texcode =~/\x{fffd}/ ) {
-    print_error($tex,"Warning: File/text was not valid ".$decoder->name." encoded.");
+    error($tex,'File/text was not valid '.$decoder->name.' encoded.');
   }
   return $texcode;
 }
@@ -1001,7 +1183,7 @@ sub __set_encoding_name {
   elsif ($enc eq 'ascii') {$enc=$cur;}
   elsif ($cur eq 'ascii') {}
   elsif ($cur ne $enc) {
-    print_error($tex,"Warning: Mismatching encodings: ".$cur." versus ".$enc.".");
+    error($tex,"Mismatching encodings: $cur versus $enc.");
   }
   $tex->{'encoding'}=$enc;
 }
@@ -1087,6 +1269,33 @@ sub _read_stdin {
   return $latexcode;
 }
 
+###### Error handling
+
+
+# Add warning to list of registered warnings (optionally to be reported at the end)
+sub warning {
+  my ($tex,$text)=@_;
+  $tex->{'warnings'}->{$text}++;
+  $warnings{$text}++;
+}
+
+# Register error and print error message
+sub error {
+  my ($tex,$text,$type)=@_;
+  if (defined $type) {$text=$type.': '.$text;}
+  $errorcount++;
+  $tex->{'errorcount'}++;
+  #print STDERR $text,"\n";
+  if (my $err=$tex->{'errorbuffer'}) {push @$err,$text;}
+  if ($verbose>=0) {_print_error($text);}
+}
+
+# Print error details
+sub error_details {
+  my ($tex,$text)=@_;
+  print STDERR $text,"\n";
+}
+
 ###### Parsing routines
 
 
@@ -1095,7 +1304,7 @@ sub parse {
   my ($tex)=@_;
   if ($htmlstyle && $verbose) {print "<div class='parse'><p>\n";}
   while (!($tex->{'eof'})) {
-    _parse_unit($tex,1);
+    _parse_unit($tex,$STATUS_TEXT);
   }
   if ($htmlstyle && $verbose) {print "</p></div>\n";}
 }
@@ -1114,18 +1323,17 @@ sub _parse_unit {
   #   -9 = preamble (between \documentclass and \begin{document})
   my ($tex,$status,$end)=@_;
   if (!defined $status) {
-    print_error($tex,"CRITICAL ERROR: Undefined parser status!");
+    error($tex,'Undefined parser status!','CRITICAL ERROR');
     exit;
   } elsif (ref($status) eq 'ARRAY') {
-    print_error($tex,"CRITICAL ERROR: Invalid parser status!");
+    error($tex,'Invalid parser status!','CRITICAL ERROR');
     exit;
   }
-  my $substat;
   if ($showstates) {
     if (defined $end) {
-      $tex->{'printstate'}=':'.$status.':'.$end.':';
+      $tex->{'printstate'}=':'.status_to_text($status).':'.$end.':';
     } else {
-      $tex->{'printstate'}=':'.$status.':';
+      $tex->{'printstate'}=':'.status_to_text($status).':';
     }
     flush_next($tex);
   }
@@ -1134,13 +1342,13 @@ sub _parse_unit {
     set_style($tex,"ignore");
     if ((defined $end) && ($end eq $next)) {return;}
     # Determine how token should be interpreted
-    if ($status==-9 && $next eq '\begin' && $tex->{'line'}=~/^\{\s*document\s*\}/) {
+    if ($status==$STATUS_PREAMBLE && $next eq '\begin' && $tex->{'line'}=~/^\{\s*document\s*\}/) {
       # \begin{document}
-      $status=1;
+      $status=$STATUS_TEXT;
     }
-    if ($status==-4) {
+    if ($status==$STATUS_EXCLUDE_ALL) {
       # Ignore everything
-    } elsif ($tex->{'type'}==-1) {
+    } elsif ($tex->{'type'}==$TOKEN_SPACE) {
       # space or other code that should be passed through without styling
       flush_next($tex,' ');
     } elsif ($next eq '\documentclass') {
@@ -1149,96 +1357,102 @@ sub _parse_unit {
       __gobble_option($tex);
       __gobble_macro_parms($tex,1);
       while (!($tex->{'eof'})) {
-       _parse_unit($tex,-9);
+       _parse_unit($tex,$STATUS_PREAMBLE);
       }
-    } elsif ($tex->{'type'}==666) {
+    } elsif ($tex->{'type'}==$TOKEN_TC) {
       # parse TC instructions
-      _parse_tc($tex);
-    } elsif ($tex->{'type'}==1) {
+      _parse_tc($tex,$next);
+    } elsif ($tex->{'type'}==$TOKEN_WORD) {
       # word
-      if ($status>0) {
-        _process_word($next,$status);
-        inc_count($tex,$status);
-        set_style($tex,'word'.$status);
+      if (my $cnt=status_text_cnt($status)) {
+        _process_word($tex,$next,$status);
+        inc_count($tex,$cnt);
+        set_style($tex,status_to_style($status));
       }
     } elsif ($next eq '{') {
       # {...}
       _parse_unit($tex,$status,'}');
-    } elsif ($tex->{'type'}==3 && $status==-3) {
+    } elsif ($next eq '}') {
+      error($tex,'Encountered } without corresponding {.');
+    } elsif ($tex->{'type'}==$TOKEN_MACRO && $status==$STATUS_EXCLUDE_STRONGER) {
+      # ignore macro call
       set_style($tex,'ignore');
-    } elsif ($tex->{'type'}==3) {
+    } elsif ($tex->{'type'}==$TOKEN_MACRO) {
       # macro call
-      _parse_macro($tex,$next,$status,$substat);
+      _parse_macro($tex,$next,$status);
     } elsif ($next eq '$') {
       # math inline
-      _parse_math($tex,$status,6,'$');
+      _parse_math($tex,$status,$CNT_COUNT_INLINEMATH,'$');
     } elsif ($next eq '$$') {
       # math display (unless already in inlined math)
       if (!(defined $end && $end eq '$')) {
-        _parse_math($tex,$status,7,'$$');
+        _parse_math($tex,$status,$CNT_COUNT_DISPLAYMATH,'$$');
       }
     }
     if (!defined $end) {return;}
   }
   if (defined $end) {
-    print_error($tex,'Reached end of file while waiting for '.$end.'.');
+    error($tex,'Reached end of file while waiting for '.$end.'.');
   }
 }
 
 # Process word with a given status (>0, i.e. counted)
 sub _process_word {
-  my ($word,$status)=@_;
+  my ($tex,$word,$status)=@_;
   $WordFreq{$word}++;
 }
 
 # Parse unit when next token is a macro
 sub _parse_macro {
-  my ($tex,$next,$status,$substat)=@_;
+  my ($tex,$next,$status)=@_;
+  # substat = parameter status settings
+  my $substat;
   if (my $label=$BreakPoints{$next}) {
     if ($tex->{'line'}=~ /^[*]?(\s*\[.*?\])*\s*\{((.|\{.*\})*)\}/ ) {
       $label=$label.': '.$2;
     }
     next_subcount($tex,$label);
   }
-  set_style($tex,$status>0?'command':'exclcommand');
-  if ($next eq '\begin' && $status>-2) {
+  set_style($tex,status_is_text($status)?'command':'exclcommand');
+  if ($next eq '\begin' && status_inc_envir($status)) {
     _parse_begin_end($tex,$status);
-  } elsif ($next eq '\end' && $status>-2) {
-    print_error($tex,'Encountered \end without corresponding \begin');
+  } elsif ($next eq '\end' && status_inc_envir($status)) {
+    error($tex,'Encountered \end without corresponding \begin');
   } elsif ($next eq '\verb') {
     _parse_verb_region($tex,$status);
-  } elsif (($status>0 || $status==-9) && defined ($substat=$TeXpackageinc{$next})) {
+  } elsif ( (status_is_text($status) || $status==$STATUS_PREAMBLE)
+           && defined ($substat=$TeXpackageinc{$next}) ) {
     _parse_include_package($tex,$substat);
-  } elsif (($status==-1) && ($substat=$TeXfloatinc{$next})) {
+  } elsif (($status==$STATUS_FLOAT) && ($substat=$TeXfloatinc{$next})) {
     # text included from float
     set_style($tex,'command');
     __gobble_macro_parms($tex,$substat);
-  } elsif ($status==-9 && defined ($substat=$TeXpreamble{$next})) {
+  } elsif ($status==$STATUS_PREAMBLE && defined ($substat=$TeXpreamble{$next})) {
    # parse preamble include macros
     set_style($tex,'command');
-   if (defined $TeXheader{$next}) {inc_count($tex,4);}
+   if (defined $TeXheader{$next}) {inc_count($tex,$CNT_COUNT_HEADER);}
     __gobble_macro_parms($tex,$substat,1);
-  } elsif ($status<0) {
+  } elsif (status_is_exclude($status)) {
    # ignore
     __gobble_option($tex);
   } elsif ($next eq '\(') {
     # math inline
-    _parse_math($tex,$status,6,'\)');
+    _parse_math($tex,$status,$CNT_COUNT_INLINEMATH,'\)');
   } elsif ($next eq '\[') {
     # math display
-    _parse_math($tex,$status,7,'\]');
+    _parse_math($tex,$status,$CNT_COUNT_DISPLAYMATH,'\]');
   } elsif ($next eq '\def') {
     # ignore \def...
     $tex->{'line'} =~ s/^([^\{]*)\{/\{/;
     flush_next($tex);
     print_style($1,'ignore');
-    _parse_unit($tex,-2);
+    _parse_unit($tex,$STATUS_EXCLUDE_STRONG);
   } elsif (defined (my $addsuffix=$TeXfileinclude{$next})) {
    # include file: queue up for parsing
     _parse_include_file($tex,$status,$addsuffix);
   } elsif (defined ($substat=$TeXmacro{$next})) {
     # macro: exclude options
-    if (defined $TeXheader{$next}) {inc_count($tex,4);}
+    if (defined $TeXheader{$next}) {inc_count($tex,$CNT_COUNT_HEADER);}
     __count_macroword($tex,$next,$status);
     __gobble_macro_parms($tex,$substat,$status);
   } elsif (defined __count_macroword($tex,$next,$status)) {
@@ -1252,12 +1466,11 @@ sub _parse_macro {
 
 # Parse TC instruction
 sub _parse_tc {
-  my ($tex)=@_;
-  my $next=$tex->{'next'};
+  my ($tex,$next)=@_;
   set_style($tex,'tc');
   flush_next($tex);
   $next=~s/^\%+TC:\s*(\w+)\s*//i || BLOCK {
-    print_error($tex,'TC command should have format %TC:instruction [macro] [parameters]');
+    error($tex,'TC command should have format %TC:instruction [macro] [parameters]');
     return;
   };
   my $instr=$1;
@@ -1270,7 +1483,7 @@ sub _parse_tc {
   } elsif ($instr eq 'ignore') {
     __gobble_tc_ignore($tex);
   } elsif ($instr eq 'endignore') {
-    print_error($tex,'TC:endignore without corresponding TC:ignore.');
+    error($tex,'TC:endignore without corresponding TC:ignore.');
   } elsif ($instr eq 'newtemplate') {$outputtemplate='';
   } elsif ($instr eq 'template') {$outputtemplate.=$next;
   } elsif ($instr eq 'subst') {
@@ -1280,7 +1493,7 @@ sub _parse_tc {
       $substitutions{$from}=$to;
       apply_substitution_rule($tex,$from,$to);
     } else {
-      print_error($tex,'Invalid TC:subst format.');
+      error($tex,'Invalid TC:subst format.');
     }
   } elsif ($next=~/^([\\]*\S+)\s+([^\s\n]+)(\s+(-?[0-9]+))?/) {
     # Format = TC:word macro
@@ -1288,9 +1501,9 @@ sub _parse_tc {
     my $param=$2;
     my $option=$4;
     if (tc_macro_param_option($instr,$macro,$param,$option)) {}
-    else {print_error($tex,'Unknown TC command: '.$instr);}
+    else {error($tex,'Unknown TC command: '.$instr);}
   } else {
-    print_error($tex,'Invalid TC command format: '.$instr);
+    error($tex,'Invalid TC command format: '.$instr);
   }
 }
 
@@ -1298,18 +1511,23 @@ sub _parse_tc {
 sub __gobble_tc_ignore {
   my ($tex)=@_;
   set_style($tex,'ignore');
-  _parse_unit($tex,-4,'%TC:endignore');
+  _parse_unit($tex,$STATUS_EXCLUDE_ALL,'%TC:endignore');
   set_style($tex,'tc');
   flush_next($tex);
 }
 
 # Parse math formulae
 sub _parse_math {
-  my ($tex,$status,$substat,$end)=@_;
-  my $localstyle=$status>0 ? 'mathgroup' : 'exclmath';
-  if ($status>0) {inc_count($tex,$substat);}
+  my ($tex,$status,$cnt,$end)=@_;
+  my $localstyle;
+  if (status_is_text($status)) {
+    $localstyle='mathgroup';
+    inc_count($tex,$cnt);
+  } else {
+    $localstyle='exclmath';
+  }
   set_style($tex,$localstyle);
-  _parse_unit($tex,0,$end);
+  _parse_unit($tex,$STATUS_IGNORE,$end);
   set_style($tex,$localstyle);
 }
 
@@ -1319,12 +1537,12 @@ sub _parse_verb_region {
  flush_next($tex);
  set_style($tex,'ignore');
  if (!($tex->{'line'} =~ s/^[^\s]// )) {
-  print_error($tex,'Invalid \verb: delimiter required.');
+  error($tex,'Invalid \verb: delimiter required.');
  }
  my $dlm=$&;
  print_style($dlm,'command');
  if (!($tex->{'line'} =~ s/^([^$dlm]*)($dlm)// )) {
-  print_error($tex,'Invalid \verb: could not find ending delimiter ('.$dlm.').');
+  error($tex,'Invalid \verb: could not find ending delimiter ('.$dlm.').');
  }
  print_style($1,'ignore');
  print_style($2,'command');
@@ -1333,7 +1551,7 @@ sub _parse_verb_region {
 # Parse begin-end group
 sub _parse_begin_end {
   my ($tex,$status)=@_;
-  my $localstyle=$status>0 ? 'grouping' : 'exclgroup';
+  my $localstyle=status_is_text($status) ? 'grouping' : 'exclgroup';
   flush_next_gobble_space($tex,$localstyle,$status);
   #__gobble_option($tex); # no option before group name
   my ($groupname,$next);
@@ -1347,34 +1565,34 @@ sub _parse_begin_end {
     }
   } else {
     $groupname='???'; $next='???';
-    print_error($tex,'ERROR: BEGIN group without type.');
+    error($tex,'Encountered \begin without environment name provided.');
   }
   # find group status (or leave unchanged)
-  my $substat;
-  $substat=$TeXgroup{$1};
+  my $substat=$TeXgroup{$1};
   if (!defined $substat) {
     $substat=$status;
     if ($strictness>=1) {
-      set_warning("Using default rule for group ".$groupname);
+      warning($tex,"Using default rule for group ".$groupname);
     }
-  }
-  if ($status<=0 && $status<$substat) {
+  } elsif (!status_is_text($status)) {
     # Do not raise status
-    $substat=$status;
-  } elsif ($status>0 && ($substat==-1)) {
+    $substat=__new_status($substat,$status);
+  } elsif ($substat==$STATUS_FLOAT) {
     # Count float
-    inc_count($tex,5);
-  } elsif ($status>0 and $substat>3) {
-    # Count item, exclude contents
-    inc_count($tex,$substat);
+    inc_count($tex,$CNT_COUNT_FLOAT);
+  } elsif (my $cnt=status_to_cnt($substat)) {
+    # Count as given type (was: if $substat>3)
+    inc_count($tex,$cnt);
     $substat=0;
+  } else {
+    # Use $substat value as given
   }
   if ($includeBibliography && $groupname eq 'thebibliography' && $substat>0) {
     # Add bibliography header
-    inc_count($tex,4);
-    __count_macroword($tex,$groupname,3);
+    inc_count($tex,$CNT_COUNT_HEADER);
+    __count_macroword($tex,$groupname,$STATUS_TEXT_HEADER);
   }
-  if ($substat<=-2) {
+  if (!status_inc_envir($substat)) {
     # Keep parsing until appropriate end group arrives
     while (!$tex->{'eof'}) {
       _parse_unit($tex,$substat,'\end');
@@ -1393,10 +1611,10 @@ sub _parse_begin_end {
       # gobble group type
       print_style('{'.$1.'}',$localstyle);
       if ($groupname ne $1) {
-        print_error($tex,'Group \begin{'.$groupname.'} ended with end{'.$1.'}.');
+        error($tex,'Group \begin{'.$groupname.'} ended with end{'.$1.'}.');
       }
     } else {
-      print_error($tex,'Group ended while waiting for \end{'.$groupname.'}.');
+      error($tex,'Group ended while waiting for \end{'.$groupname.'}.');
     }
   }
 }
@@ -1413,10 +1631,10 @@ sub _parse_include_file {
   || $tex->{'line'} =~ s/^\s*([^\{\}\%\\\s]+)//
   || $tex->{'line'} =~ s/^\s*\{(.+?)\}//
   || BLOCK {
-    print_error($tex,'Failed to read or interpret file name for inclusion.');
+    error($tex,'Failed to read or interpret file name for inclusion.');
     return;
   };
-  if ($status>0) {
+  if (status_is_text($status)) {
     print_style($&,'fileinclude');
     my $fname=$1;
     if ($addsuffix==2) {$fname.='.tex';}
@@ -1431,7 +1649,7 @@ sub _parse_include_file {
 sub _parse_include_bbl {
   my ($tex,$status)=@_;
   __gobble_macro_parms($tex,1,$status);
-  if ($status>0 && $includeBibliography) {
+  if (status_is_text($status) && $includeBibliography) {
     my $fname=$tex->{'filename'};
     $fname=~s/\.\w+$/\.bbl/;
     include_file($tex,$fname);
@@ -1443,11 +1661,14 @@ sub _parse_include_package {
   my ($tex)=@_;
   set_style($tex,'document');
   __gobble_option($tex);
-  if ( $tex->{'line'}=~s/^\{(\w+)\}// ) {
+  if ( $tex->{'line'}=~s/^\{((\w+)(\s*,\s*\w+)*)\}// ) {
     print_style('{'.$1.'}','document');
-    include_package($1);
+    foreach (split(/\s*,\s*/,$1)) {
+      include_package($_);
+    }
   } else {
-    _parse_unit($tex,__new_status(0,1));
+    _parse_unit($tex,$STATUS_IGNORE);
+    error($tex,"Could not recognise package list, ignoring it instead.");
   }
   __gobble_options($tex);
 }
@@ -1455,11 +1676,11 @@ sub _parse_include_package {
 # Count macroword using given status
 sub __count_macroword {
   my ($tex,$next,$status)=@_;
-  my $substat=$TeXmacroword{$next};
-  if ($status>0 && defined $substat) {
-    inc_count($tex,$status,$substat);
+  my $n=$TeXmacroword{$next};
+  if (defined $n && (my $cnt=status_text_cnt($status))) {
+    inc_count($tex,$cnt,$n);
   }
-  return $substat;
+  return $n;
 }
 
 # Gobble next option, return option or undef if none
@@ -1492,16 +1713,16 @@ sub __gobble_macro_modifier {
 # Gobble macro parameters as specified in parm plus options
 sub __gobble_macro_parms {
   my ($tex,$parm,$oldstat)=@_;
-  my $i;
+  my $n;
   if (ref($parm) eq 'ARRAY') {
-    $i=scalar @{$parm};
+    $n=scalar @{$parm};
   } else {
-    $i=$parm;
-    $parm=[0,0,0,0,0,0,0,0,0];
+    $n=$parm;
+    $parm=[($STATUS_IGNORE)x$n];
   }
-  if ($i>0) {__gobble_macro_modifier($tex);}
+  if ($n>0) {__gobble_macro_modifier($tex);}
   __gobble_options($tex);
-  for (my $j=0;$j<$i;$j++) {
+  for (my $j=0;$j<$n;$j++) {
     _parse_unit($tex,__new_status($parm->[$j],$oldstat));
     __gobble_options($tex);
   }
@@ -1509,15 +1730,13 @@ sub __gobble_macro_parms {
 
 # Return new parsing status given old and substatus
 sub __new_status {
-  my ($substat,$old)=@_;
-  if (!defined $old) {return $substat;}
-  if ($old==-4 || $substat==-4) {return -4;}
-  if ($old==-3 || $substat==-3) {return -3;}
-  if ($old==-2 || $substat==-2) {return -2;}
-  if ($old==0 || $substat==0) {return 0;}
-  if ($old==-9 || $substat==-9) {return -9;}
-  if ($old>$substat) {return $old;}
-  return $substat;
+  my ($substat,$oldstat)=@_;
+  if (!defined $oldstat) {return $substat;}
+  foreach my $st (@STATUS_PRIORITY_LIST) {
+    if ($oldstat==$st || $substat==$st) {return $st;}
+  }
+  error($Main,'Could not determine new status in __new_status!','BUG');
+  return $oldstat;
 }
 
 # Get next token skipping comments and flushing output buffer
@@ -1529,9 +1748,9 @@ sub _next_token {
   $tex->{'style'}=undef;
   while (defined ($next=__get_next_token($tex))) {
     $type=$tex->{'type'};
-    if ($type==0) {
+    if ($type==$TOKEN_COMMENT) {
       print_style($next,'comment');
-    } elsif ($type==9) {
+    } elsif ($type==$TOKEN_LINEBREAK) {
       if ($verbose>0) {line_return(-1,$tex);}
     } else {
       return $next;
@@ -1564,35 +1783,35 @@ sub __get_next_token {
       next;
     } elsif ($ch=~/^[ \t\f]/) {
       $tex->{'line'}=~s/^([ \t\f]+)//;
-      return __set_token($tex,$1,-1);
+      return __set_token($tex,$1,$TOKEN_SPACE);
     } elsif ($ch eq "\n" || $ch eq "\r") {
       $tex->{'line'}=~s/^(\r\n?|\n)//;
-      return __set_token($tex,$1,9);
+      return __set_token($tex,$1,$TOKEN_LINEBREAK);
     } elsif ($tex->{'line'}=~s/^($WordPattern)//) {
-      return __set_token($tex,$1,1);
+      return __set_token($tex,$1,$TOKEN_WORD);
     } elsif ($ch eq '$') {
       $tex->{'line'}=~s/^(\$\$?)//;
-      return __set_token($tex,$1,6);
+      return __set_token($tex,$1,$TOKEN_MATH);
     } elsif ($ch eq '{' || $ch eq '}') {
-      return __get_chtoken($tex,$ch,4);
+      return __get_chtoken($tex,$ch,$TOKEN_BRACE);
     } elsif ($ch eq '[' || $ch eq ']') {
-      return __get_chtoken($tex,$ch,5);
+      return __get_chtoken($tex,$ch,$TOKEN_BRACKET);
     } elsif ($ch=~/^['"`:.,()[]!+-*=\/^_@<>~#&]$/) {
-      return __get_chtoken($tex,$ch,2);
+      return __get_chtoken($tex,$ch,$TOKEN_SYMBOL);
     } elsif ($ch eq '%') {
       if ($tex->{'line'}=~s/^(\%+TC:\s*endignore\b[^\r\n]*)//i) {
-        __set_token($tex,$1,666);
+        __set_token($tex,$1,$TOKEN_TC);
         return "%TC:endignore";
       }
-      if ($tex->{'line'}=~s/^(\%+[tT][cC]:[^\r\n]*)//) {return __set_token($tex,$1,666);}
-      if ($tex->{'line'}=~s/^(\%+[^\r\n]*)//) {return __set_token($tex,$1,0);}
-      return __get_chtoken($tex,$ch,0);
+      if ($tex->{'line'}=~s/^(\%+[tT][cC]:[^\r\n]*)//) {return __set_token($tex,$1,$TOKEN_TC);}
+      if ($tex->{'line'}=~s/^(\%+[^\r\n]*)//) {return __set_token($tex,$1,$TOKEN_COMMENT);}
+      return __get_chtoken($tex,$ch,$TOKEN_COMMENT);
     } elsif ($ch eq '\\') {
-      if ($tex->{'line'}=~s/^(\\[{}%])//) {return __set_token($tex,$1,2);}
-      if ($tex->{'line'}=~s/^(\\([a-zA-Z_]+|[^a-zA-Z_]))//) {return __set_token($tex,$1,3);}
-      return __get_chtoken($tex,$ch,999);
+      if ($tex->{'line'}=~s/^(\\[{}%])//) {return __set_token($tex,$1,$TOKEN_SYMBOL);}
+      if ($tex->{'line'}=~s/^(\\([a-zA-Z_]+|[^a-zA-Z_]))//) {return __set_token($tex,$1,$TOKEN_MACRO);}
+      return __get_chtoken($tex,$ch,$TOKEN_END);
     } else {
-      return __get_chtoken($tex,$ch,999);
+      return __get_chtoken($tex,$ch,$TOKEN_END);
     }
   }
   return undef;
@@ -1600,7 +1819,7 @@ sub __get_next_token {
 
 # Set next token and its type
 sub __set_token {
-  my ($tex,$next,$type,$delete)=@_;
+  my ($tex,$next,$type)=@_;
   $tex->{'next'}=$next;
   $tex->{'type'}=$type;
   return $next;
@@ -1638,7 +1857,7 @@ sub __get_chtoken {
 #  7 = #displayed formulae: number of displayed equations
 sub new_count {
   my ($title)=@_;
-  my @cnt=(0,0,0,0,0,0,0,0);
+  my @cnt=(0) x $SIZE_CNT;
   my %count=('counts'=>\@cnt,'title'=>$title);
   # files, text words, header words, float words,
   # headers, floats, math-inline, math-display;
@@ -1647,16 +1866,16 @@ sub new_count {
 
 # Increment TeX count for a given count type
 sub inc_count {
-  my ($tex,$type,$value)=@_;
+  my ($tex,$cnt,$value)=@_;
   my $count=$tex->{'subcount'};
   if (!defined $value) {$value=1;}
-  ${$count->{'counts'}}[$type]+=$value;
+  ${$count->{'counts'}}[$cnt]+=$value;
 }
 
 # Get count value for a given count type
 sub get_count {
-  my ($count,$type)=@_;
-  return ${$count->{'counts'}}[$type];
+  my ($count,$cnt)=@_;
+  return ${$count->{'counts'}}[$cnt];
 }
 
 # Compute sum count for a count object
@@ -1683,7 +1902,7 @@ sub number_of_subcounts {
 sub _count_is_null {
   my $count=shift @_;
   if (!$count->{'title'}=~/^_/) {return 0;}
-  for (my $i=1;$i<8;$i++) {
+  for (my $i=1;$i<$SIZE_CNT;$i++) {
     if (get_count($count,$i)>0) {return 0;}
   }
   return 1;
@@ -1692,7 +1911,7 @@ sub _count_is_null {
 # Add one count to another
 sub _add_to_count {
   my ($a,$b)=@_;
-  for (my $i=0;$i<8;$i++) {
+  for (my $i=0;$i<$SIZE_CNT;$i++) {
    ${$a->{'counts'}}[$i]+=${$b->{'counts'}}[$i];
   }
 }
@@ -1726,12 +1945,6 @@ sub Close_Output {
   }
 }
 
-# Add warning to list of registered warnings
-sub set_warning {
-  my $text=shift @_;
-  $warnings{$text}++;
-}
-
 # Report if there were any errors occurring during parsing
 sub Report_Errors {
   if (defined $outputtemplate) {return;}
@@ -1754,6 +1967,10 @@ sub Report_Errors {
 # Print word frequencies (as text only)
 sub print_word_freq {
   my ($word,$wd,$freq,%Freq,%Word,%Class);
+  my %regs;
+  foreach my $cg (@AlphabetScripts,@LogogramScripts) {
+    $regs{$cg}=qr/\p{$cg}/;
+  }
   my $sum=0;
   for $word (keys %WordFreq) {
     $wd=lc $word;
@@ -1765,7 +1982,7 @@ sub print_word_freq {
   __print_word_freq("Word","Freq","th");
   if ($htmlstyle) {print "</thead>\n";}
   if ($optionWordClassFreq>0) {
-    for $word (keys %Freq) {$Class{__word_class($word)}+=$Freq{$word};}
+    for $word (keys %Freq) {$Class{__word_class($word,\%regs)}+=$Freq{$word};}
     __print_sorted_freqs('langstat',\%Class);
   }
   if ($htmlstyle) {print "<tbody class='sumstat'>\n";}
@@ -1790,11 +2007,11 @@ sub __lc_merge {
 
 # Return the word class based on script groups it contains
 sub __word_class {
-  my $wd=shift @_;
+  my ($wd,$regs)=@_;
   my @classes;
   $wd=~s/\\\w+({})?/\\{}/g;
-  foreach my $cg (@AlphabetScripts,@LogogramScripts) {
-    if ($wd=~/\p{$cg}/) {push @classes,$cg;}
+  foreach my $name (keys %{$regs}) {
+    if ($wd=~$regs->{$name}) {push @classes,$name;}
   }
   my $cl=join('+',@classes);
   if ($cl) {}
@@ -1842,16 +2059,28 @@ sub __print_word_freq {
 sub print_with_style {
   my ($text,$style,$colour)=@_;
   if ($style eq ' ') {
-    if ($htmlstyle && $text=~/^[ \t]+$/ ) {$text=~s/[ \t]{2}/\&nbsp; /g;}
-    print $text;
+    print text_to_print($text);
   } elsif ($style eq '') {
-    print $text;
-    print_error($Main,"This is a bug! Empty style should not occur in print_with_style!");
+    print text_to_print($text);
+    error($Main,'Empty style should not occur in print_with_style!','BUG');
   } elsif ($htmlstyle) {
-    print "<span class='".$style."'>".$text."</span>";
+    print "<span class='$style'>".text_to_print($text).'</span>';
   } else {
-    ansiprint($text,$colour);
+    ansiprint(text_to_print($text),$colour);
+    if ($style=~/$separatorstyleregex/) {print $separator;}
   }
+}
+
+# Prepare text string for print: convert special characters
+sub text_to_print {
+  my $text=join('',@_);
+  if ($htmlstyle) {
+    $text=~s/&/&amp;/g;
+    $text=~s/</&lt;/g;
+    $text=~s/>/&gt;/g;
+    $text=~s/[ \t]{2}/\&nbsp; /g;
+  }
+  return $text;
 }
 
 # Print text, using appropriate tags for HTML
@@ -1861,9 +2090,9 @@ sub formatprint {
   if ($htmlstyle && defined $tag) {
     print '<'.$tag;
     if ($class) {print " class='".$class."'";}
-    print '>'.$text.'</'.$tag.'>';
+    print '>'.text_to_print($text).'</'.$tag.'>';
   } else {
-    print $text;
+    print text_to_print($text);
   }
   if ($break) {print "\n";}
 }
@@ -1910,10 +2139,10 @@ sub __count_header {
 # Print total count (sum) for a given count object
 sub _print_sum_count {
   my ($count,$header)=__count_and_header(@_);
-  if ($htmlstyle) {print "<p class='count'>".$header.": ";}
+  if ($htmlstyle) {print "<p class='count'>".text_to_print($header).": ";}
   print get_sum_count($count);
   if ($htmlstyle) {print "</p>\n";}
-  else {print ": ".$header;}
+  else {print ": ".text_to_print($header);}
   print "\n";
 }
 
@@ -1922,13 +2151,14 @@ sub _print_count_brief {
   my ($count,$header,$tag1,$tag2)=__count_and_header(@_);
   my @cnt=@{$count->{'counts'}};
   if ($htmlstyle && $tag1) {print "<".$tag1.">";}
-  print $cnt[1]."+".$cnt[2]."+".$cnt[3].
-      " (".$cnt[4]."/".$cnt[5]."/".$cnt[6]."/".$cnt[7].")";
+  print $cnt[$CNT_WORDS_TEXT]."+".$cnt[$CNT_WORDS_HEADER]."+".$cnt[$CNT_WORDS_CAPTION].
+      " (".$cnt[$CNT_COUNT_HEADER]."/".$cnt[$CNT_COUNT_FLOAT].
+		"/".$cnt[$CNT_COUNT_INLINEMATH]."/".$cnt[$CNT_COUNT_DISPLAYMATH].")";
   if ($htmlstyle && $tag2) {
     print "</".$tag1."><".$tag2.">";
     $tag1=$tag2;
   } else {print " ";}
-  print $header;
+  print text_to_print($header);
   if ($htmlstyle && $tag1) {print "</".$tag1.">";}
   if ($finalLineBreak) {print "\n";}
 }
@@ -1942,11 +2172,11 @@ sub _print_count_details {
     if (!defined $encoding) {formatprint('Encoding: '.$tex->{'encoding'}."\n",'li');}
   }
   if (@sumweights) {formatprint('Sum count: '.get_sum_count($count)."\n",'li');}
-  for (my $i=1;$i<8;$i++) {
+  for (my $i=1;$i<$SIZE_CNT;$i++) {
     formatprint($countlabel[$i].': '.get_count($count,$i)."\n",'li');
   }
-  if (get_count($count,0)>1) {
-    formatprint($countlabel[0].': '.get_count($count,0)."\n",'li');
+  if (get_count($count,$CNT_FILE)>1) {
+    formatprint($countlabel[$CNT_FILE].': '.get_count($count,$CNT_FILE)."\n",'li');
   }
   my $subcounts=$count->{'subcounts'};
   if ($showsubcounts && defined $subcounts && scalar(@{$subcounts})>=$showsubcounts) {
@@ -1983,7 +2213,7 @@ sub _print_count_template {
 # Print counts using template
 sub __print_count_using_template {
   my ($count,$template)=@_;
-  for (my $i=0;$i<8;$i++) {
+  for (my $i=0;$i<$SIZE_CNT;$i++) {
     $template=__process_template($template,$i,get_count($count,$i));
   }
   $template=~s/\{VER\}/$versionnumber/gi;
@@ -2045,7 +2275,7 @@ sub flush_next_gobble_space {
   my ($tex,$style,$status)=@_;
   my $ret=flush_next($tex,$style);
   if (!defined $ret) {$ret=0;}
-  if (!defined $status) {$status=0;}
+  if (!defined $status) {$status=$STATUS_IGNORE;}
   my $prt=($verbose>0);
   if ($tex->{'line'}=~s/^([ \t\f]*)(\r\n?|\n)([ \t\f]*)//) {
     if (!$prt) {
@@ -2097,17 +2327,6 @@ sub line_return {
     linebreak();
     $blankline++;
   }
-}
-
-# Register error and print error message
-sub print_error {
-  my ($source,$text)=@_;
-  $errorcount++;
-  $source->{'errorcount'}++;
-  print STDERR $text,"\n";
-  if ($verbose<0) {}
-  elsif (my $err=$source->{'errorbuffer'}) {push @$err,$text;}
-  else {_print_error($text);}
 }
 
 # Print error message
@@ -2171,7 +2390,7 @@ sub _print_help_style {
 sub _help_style_line {
   my ($text,$style,$comment)=@_;
   if ($htmlstyle) {
-    $comment="&nbsp;&nbsp;....&nbsp;&nbsp;".$comment;
+    $comment="&nbsp;&nbsp;....&nbsp;&nbsp;".text_to_print($comment);
   } else {
     $comment=" .... ".$comment;
   }
@@ -2181,89 +2400,6 @@ sub _help_style_line {
   }
 }
 
-
-###### HTML routines
-
-
-# Print HTML header
-sub html_head {
-  print "<html>\n<head>";
-  print "\n<meta http-equiv='content-type' content='text/html; charset=$outputEncoding'>\n";
-  _print_html_style();
-  print "</head>\n\n<body>\n";
-  print "\n<h1>LaTeX word count";
-  if ($showVersion>0) {print " (version ",_html_version(),")"}
-  print "</h1>\n";
-}
-
-# Print HTML tail
-sub html_tail {
-  print "</body>\n\n</html>\n";
-}
-
-# Return version number using HTML
-sub _html_version {
-  my $htmlver=$versionnumber;
-  $htmlver=~s/\b(alpha|beta)\b/&$1;/g;
-  return $htmlver;
-}
-
-# Print HTML STYLE element
-sub _print_html_style {
-print <<END
-<style>
-<!--
-body {width:auto;padding:5;margin:5;}
-.error {font-weight:bold;color:#f00;font-style:italic;}
-.word1,.word2,.word3 {color: #009; border-left: 1px solid #CDF; border-bottom: 1px solid #CDF;}
-.word2 {font-weight: 700;}
-.word3 {font-style: italic;}
-.command {color: #c00;}
-.exclcommand {color: #f99;}
-.option {color: #cc0;}
-.grouping, .document {color: #900; font-weight:bold;}
-.mathgroup {color: #090;}
-.exclmath {color: #6c6;}
-.ignore {color: #999;}
-.exclgroup {color:#c66;}
-.tc {color: #999; font-weight:bold;}
-.comment {color: #999; font-style: italic;}
-.state {color: #990; font-size: 70%;}
-.cumsum {color: #999; font-size: 80%;}
-.fileinclude {color: #696; font-weight:bold;}
-.warning {color: #c00; font-weight: 700;}
-
-div.filegroup, div.parse, div.stylehelp, div.count, div.sumcount, div.error {
-   border: solid 1px #999; margin: 4pt 0pt; padding: 4pt;
-}
-div.stylehelp {font-size: 80%; background: #fffff0; margin-bottom: 16pt;}
-div.filegroup {background: #dfd; margin-bottom: 16pt;}
-div.count {background: #ffe;}
-div.sumcount {background: #cec;}
-div.error {background: #fcc;}
-.parse {font-size: 80%; background: #f8fff8; border-bottom:none;}
-
-ul.count {list-style-type: none; margin: 4pt 0pt; padding: 0pt;}
-.count li.header {font-weight: bold; font-style: italic;}
-.subcount li.header {font-weight: normal; font-style: italic;}
-.subcount li {margin-left: 16pt; font-size: 80%;}
-.fielddesc {font-style: italic;}
-.nb {color: #900;}
-
-table.stat {border:2px solid #339; background:#666; border-collapse:collapse;}
-table.stat tr {border:1px solid #CCC;}
-table.stat th, table.stat td {padding:1pt 4pt;}
-table.stat col {padding:4pt;}
-table.stat thead {background: #CCF;}
-table.stat tbody {border:1px solid #333;}
-table.stat tbody.sumstat {background:#FFC;}
-table.stat tbody.langstat {background:#FEE;}
-table.stat tbody.wordstat {background:#EEF;}
-table.stat .sum {font-weight:bold; font-style:italic;}
--->
-</style>
-END
-}
 
 ###### Help routines
 
@@ -2399,6 +2535,89 @@ sub _print_rule_group {
 }
 
 
+###### HTML routines
+
+
+# Print HTML header
+sub html_head {
+  print "<html>\n<head>";
+  print "\n<meta http-equiv='content-type' content='text/html; charset=$outputEncoding'>\n";
+  _print_html_style();
+  print "</head>\n\n<body>\n";
+  print "\n<h1>LaTeX word count";
+  if ($showVersion>0) {print " (version ",_html_version(),")"}
+  print "</h1>\n";
+}
+
+# Print HTML tail
+sub html_tail {
+  print "</body>\n\n</html>\n";
+}
+
+# Return version number using HTML
+sub _html_version {
+  my $htmlver=$versionnumber;
+  $htmlver=~s/\b(alpha|beta)\b/&$1;/g;
+  return $htmlver;
+}
+
+# Print HTML STYLE element
+sub _print_html_style {
+print <<END
+<style>
+<!--
+body {width:auto;padding:5;margin:5;}
+.error {font-weight:bold;color:#f00;font-style:italic;}
+.word1,.word2,.word3 {color: #009; border-left: 1px solid #CDF; border-bottom: 1px solid #CDF;}
+.word2 {font-weight: 700;}
+.word3 {font-style: italic;}
+.command {color: #c00;}
+.exclcommand {color: #f99;}
+.option {color: #cc0;}
+.grouping, .document {color: #900; font-weight:bold;}
+.mathgroup {color: #090;}
+.exclmath {color: #6c6;}
+.ignore {color: #999;}
+.exclgroup {color:#c66;}
+.tc {color: #999; font-weight:bold;}
+.comment {color: #999; font-style: italic;}
+.state {color: #990; font-size: 70%;}
+.cumsum {color: #999; font-size: 80%;}
+.fileinclude {color: #696; font-weight:bold;}
+.warning {color: #c00; font-weight: 700;}
+
+div.filegroup, div.parse, div.stylehelp, div.count, div.sumcount, div.error {
+   border: solid 1px #999; margin: 4pt 0pt; padding: 4pt;
+}
+div.stylehelp {font-size: 80%; background: #fffff0; margin-bottom: 16pt;}
+div.filegroup {background: #dfd; margin-bottom: 16pt;}
+div.count {background: #ffe;}
+div.sumcount {background: #cec;}
+div.error {background: #fcc;}
+.parse {font-size: 80%; background: #f8fff8; border-bottom:none;}
+
+ul.count {list-style-type: none; margin: 4pt 0pt; padding: 0pt;}
+.count li.header {font-weight: bold; font-style: italic;}
+.subcount li.header {font-weight: normal; font-style: italic;}
+.subcount li {margin-left: 16pt; font-size: 80%;}
+.fielddesc {font-style: italic;}
+.nb {color: #900;}
+
+table.stat {border:2px solid #339; background:#666; border-collapse:collapse;}
+table.stat tr {border:1px solid #CCC;}
+table.stat th, table.stat td {padding:1pt 4pt;}
+table.stat col {padding:4pt;}
+table.stat thead {background: #CCF;}
+table.stat tbody {border:1px solid #333;}
+table.stat tbody.sumstat {background:#FFC;}
+table.stat tbody.langstat {background:#FEE;}
+table.stat tbody.wordstat {background:#EEF;}
+table.stat .sum {font-weight:bold; font-style:italic;}
+-->
+</style>
+END
+}
+
 ###### Read text data
 
 
@@ -2435,7 +2654,7 @@ sub wprintstringdata {
   my $name=shift @_;
   my $data=StringData($name);
   if (!defined $data) {
-    print_error($Main,"ERROR: No StringData $name.");
+    error($Main,"No StringData $name.",'BUG');
   }
   wprintlines(@_,@$data);  
 }
@@ -2566,6 +2785,8 @@ Options:
   -nosub        Do not generate subcounts.
   -col          Use ANSI colours in text output.
   -nc, -nocol   No colours (colours require ANSI).
+  -nosep, -noseparator   No separating character/string added after each word (default).
+  -sep=, -separator=   Separating character or string to be added after each word.
   -html         Output in HTML format.
   -htmlcore     Only HTML body contents.
   -opt, -optionfile   Read options/parameters from file.
@@ -2584,14 +2805,16 @@ Options:
   -utf8, -unicode    Selects Unicode (UTF-8) for input and output. This is automatic with -chinese, and is required to handle e.g. Korean text. Note that the TeX file must be save in UTF-8 format (not e.g. GB2312 or Big5), or the result will be unpredictable.
   -alpha=, -alphabets=    List of Unicode character groups (or digit, alphabetic) permitted as letters. Names are separated by ',' or '+'. If list starts with '+', the alphabets will be added to those already included. The default is Digit+alphabetic.
   -logo=, -logograms=    List of Unicode character groups interpreted as whole word characters, e.g. Han for Chinese characters. Names are separated by ',' or '+'. If list starts with '+', the alphabets will be added to those already included. By default, this is set to include Ideographic, Katakana, Hiragana, Thai and Lao.
-  -ch, -chinese, -zhongwen    Turns on support for Chinese characters. TeXcount will then count each Chinese character as a word. Automatically turns on -utf8.
-  -jp, -japanese    Turns on support for Japanese characters. TeXcount will count each Japanese character (kanji, hiragana, and katakana) as one word, i.e. not do any form of word segmentation. Automatically turns on -utf8.
-  -ch-only, ..., -japanese-only    As options -ch, ..., -japanese, but also excludes letter-based words.
+  -ch, -chinese, -zhongwen    Turns on support for Chinese characters. TeXcount will then count each Chinese character as a word.
+  -jp, -japanese    Turns on support for Japanese characters. TeXcount will count each Japanese character (kanji, hiragana, and katakana) as one word, i.e. not do any form of word segmentation.
+  -kr, -korean    Turns on support for Korean. This will count hangul and han characters, i.e. with no word separation. NB: Experimental!
+  -kr-words, -korean-words    Turns on support for Korean words, i.e. hangul words separated by characters. Han characters are still counted as characters. NB: Experimental!
+  -ch-only, ..., -korean-words-only    As options -chinese, ..., -korean-words, but also excludes letter-based words or trims down the character set to the minimum.
   -char, -character, -letters    Counts letters/characters instead of words. Note that spaces and punctuation is not counted.
   -char-only, ..., -letters-only    Like -letters, but counts alphabetic letters only.
   -countall, -count-all    The default setting in which all characters are included as either alphabets og logograms.
   -freq         Produce individual word frequency table.
-  -stat         Produce statistics on language usage. 
+  -stat         Produce statistics on language/script usage. 
   -codes        Display output style code overview and explanation. This is on by default.
   -nocodes      Do not display output style code overview.
   -h, -?, -help, /?    Help text.
