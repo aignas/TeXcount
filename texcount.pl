@@ -15,8 +15,8 @@ BEGIN {
 
 ##### Version information
 
-my $versionnumber="3.0.alpha";
-my $versiondate="2012 Jan 09";
+my $versionnumber="3.0.beta";
+my $versiondate="2012 May 30";
 
 ###### Set global settings and variables
 
@@ -46,6 +46,7 @@ my @LogogramScripts=qw/Ideographic Katakana Hiragana Thai Lao Hangul/; # Scripts
 my $includeTeX=0; # Flag to parse included files
 my $includeBibliography=0; # Flag to include bibliography
 my %substitutions; # Substitutions to make globally
+my %IncludedPackages; # List of included packages
 
 # Counting options
 my @sumweights; # Set count weights for computing sum
@@ -211,9 +212,11 @@ my $STATE_TO_HEADER=4;
 my $STATE_TO_FLOAT=5;
 my $STATE_TO_INLINEMATH=6;
 my $STATE_TO_DISPLAYMATH=7;
-my $_STATE_OPTION=0;
-my $_STATE_EXCLUDE_=-10;
-my $_STATE_NULL=1;
+my $__STATE_EXCLUDE_=-10;
+my $__STATE_NULL=1;
+my $_STATE_OPTION=-1000;
+my $_STATE_NOOPTION=-1001;
+my $_STATE_AUTOOPTION=-1002;
 
 # Counter key mapped to STATE
 my $PREFIX_PARAM_OPTION=' '; # Prefix for parameter options/modifiers
@@ -231,7 +234,9 @@ add_keys_to_hash(\%key2state,$STATE_FLOAT,-1,'isfloat');
 add_keys_to_hash(\%key2state,$STATE_EXCLUDE_STRONG,-2,'xx');
 add_keys_to_hash(\%key2state,$STATE_EXCLUDE_STRONGER,-3,'xxx');
 add_keys_to_hash(\%key2state,$STATE_EXCLUDE_ALL,-4,'xall');
-add_keys_to_hash(\%key2state,$_STATE_OPTION,' option',' opt',' optional');
+add_keys_to_hash(\%key2state,$_STATE_OPTION,'[',' option',' opt',' optional');
+add_keys_to_hash(\%key2state,$_STATE_NOOPTION,'nooption','nooptions','noopt','noopts');
+add_keys_to_hash(\%key2state,$_STATE_AUTOOPTION,'autooption','autooptions','autoopt','autoopts');
 
 # When combining two states, use the first one; list must be complete!
 my @STATE_FIRST_PRIORITY=(
@@ -239,6 +244,7 @@ my @STATE_FIRST_PRIORITY=(
     $STATE_EXCLUDE_STRONGER,
     $STATE_EXCLUDE_STRONG,
     $STATE_FLOAT,
+    $STATE_MATH,
     $STATE_IGNORE,
     $STATE_PREAMBLE,
     $STATE_TO_FLOAT,
@@ -262,7 +268,7 @@ my %transition2state=(
     $STATE_TO_HEADER      => [$STATE_TEXT_HEADER,$CNT_COUNT_HEADER],
     $STATE_TO_INLINEMATH  => [$STATE_MATH       ,$CNT_COUNT_INLINEMATH],
     $STATE_TO_DISPLAYMATH => [$STATE_MATH       ,$CNT_COUNT_DISPLAYMATH],
-    $STATE_TO_FLOAT       => [$STATE_TEXT_FLOAT ,$CNT_COUNT_FLOAT]);
+    $STATE_TO_FLOAT       => [$STATE_FLOAT      ,$CNT_COUNT_FLOAT]);
 
 # Parsing state descriptions (used for macro rule help)
 my %state2desc=(
@@ -309,7 +315,7 @@ sub state_text_cnt {
 # State: is an exclude state
 sub state_is_exclude {
   my $st=shift @_;
-  return ($st<=$_STATE_EXCLUDE_);
+  return ($st<=$__STATE_EXCLUDE_);
 }
 
 # State: \begin and \end should be processed
@@ -541,6 +547,7 @@ my %TeXpackageinc=('\usepackage'=>1,'\RequirePackage'=>1);
 # Gets added to TeXmacro. Is used within preambles only.
 my %TeXpreamble;
 add_keys_to_hash(\%TeXpreamble,['header'],'\title');
+add_keys_to_hash(\%TeXpreamble,['other'],'\thanks');
 add_keys_to_hash(\%TeXpreamble,['xxx','xxx'],'\newcommand','\renewcommand');
 add_keys_to_hash(\%TeXpreamble,['xxx','xxx','xxx'],'\newenvironment','\renewenvironment');
 
@@ -563,37 +570,54 @@ my %TeXfloatinc=('\caption'=>['otherword']);
 #
 # For macros not specified here, the default value is 0: i.e.
 # no tokens are excluded, but [...] options are.
-my $PREFIX_ENVIR='begin'; # Prefix used for environment names
 my %TeXmacro=(%TeXpreamble,%TeXfloatinc,%TeXpackageinc);
+add_keys_to_hash(\%TeXmacro,['text'],
+    '\textnormal','\textrm','\textit','\textbf','\textsf','\texttt','\textsc','\textsl','\textup','\textmd',
+    '\makebox','\mbox','\framebox','\fbox','\uppercase','\lowercase','\textsuperscript','\textsubscript',
+    '\citetext');
+add_keys_to_hash(\%TeXmacro,['[','text'],
+    '\item');
+add_keys_to_hash(\%TeXmacro,['[','ignore'],
+    '\linebreak','\nolinebreak','\pagebreak','\nopagebreak');
 add_keys_to_hash(\%TeXmacro,0,
-    '\makebox','\framebox','\uppercase','\lowercase');
+    '\maketitle','\indent','\noindent',
+    '\centering','\raggedright','\raggedleft','\clearpage','\cleardoublepage','\newline','\newpage',
+    '\smallskip','\medskip','\bigskip','\vfill','\hfill','\hrulefill','\dotfill',
+    '\normalsize','\small','\footnotesize','\scriptsize','\tiny','\large','\Large','\LARGE','\huge','\Huge',
+    '\normalfont','\em','\rm','\it','\bf','\sf','\tt','\sc','\sl',
+    '\rmfamily','\sffamily','\ttfamily','\upshape','\itshape','\slshape','\scshape','\mdseries','\bfseries',
+    '\selectfont',
+    '\tableofcontents','\listoftables','\listoffigures');
 add_keys_to_hash(\%TeXmacro,1,
-    'beginthebibliography','beginlrbox','beginminipage', 'begintabular','\begin','\end',
+    '\begin','\end',
     '\documentclass','\documentstyle','\hyphenation','\pagestyle','\thispagestyle',
-    '\bibliographystyle','\bibliography','\pagenumbering','\markboth', '\markright',
-    '\includeonly','\includegraphics',
-    '\label','\ref','\pageref','\bibitem','\cite','\citep','\citet','\citeauthor','\citealt','\nocite',
+    '\author','\date',
+    '\bibliographystyle','\bibliography','\pagenumbering','\markright',
+    '\includeonly','\includegraphics','\special',
+    '\label','\ref','\pageref','\bibitem',
     '\eqlabel','\eqref','\hspace','\vspace','\addvspace',
-    '\parbox','\raisebox','\newsavebox','\sbox','\usebox', 
+    '\newsavebox','\usebox', 
     '\newlength','\newcounter','\stepcounter','\refstepcounter','\usecounter',
+    '\fontfamily','\fontseries',
     '\alph','\arabic','\fnsymbol','\roman','\value',
     '\typeout', '\typein','\cline');
 add_keys_to_hash(\%TeXmacro,2,
-    'beginlist','\newfont','\newtheorem','\savebox','\rule',
+    '\newfont','\newtheorem','\sbox','\savebox','\rule','\markboth',
     '\setlength','\addtolength','\settodepth','\settoheight','\settowidth','\setcounter',
-    '\addtocontents','\addtocounter');
+    '\addtocontents','\addtocounter',
+    '\fontsize');
 add_keys_to_hash(\%TeXmacro,3,'\multicolumn','\addcontentsline');
+add_keys_to_hash(\%TeXmacro,6,'\DeclareFontShape');
+add_keys_to_hash(\%TeXmacro,['[','text','ignore'],
+    '\cite','\nocite','\citep','\citet','\citeauthor','\citeyear','\citeyearpar',
+    '\citealp','\citealt','\Citep','\Citet','\Citealp','\Citealt','\Citeauthor');
+add_keys_to_hash(\%TeXmacro,['ignore','text'],'\parbox','\raisebox');
 add_keys_to_hash(\%TeXmacro,['otherword'],'\marginpar','\footnote','\footnotetext');
 add_keys_to_hash(\%TeXmacro,['header'],
     '\title','\part','\chapter','\section','\subsection','\subsubsection','\paragraph','\subparagraph');
-add_keys_to_hash(\%TeXmacro,[' option','text'],'\item');
+add_keys_to_hash(\%TeXmacro,['xxx','xxx','text'],'\multicolumn');
 add_keys_to_hash(\%TeXmacro,['xxx','xxx'],'\newcommand','\renewcommand');
 add_keys_to_hash(\%TeXmacro,['xxx','xxx','xxx'],'\newenvironment','\renewenvironment');
-
-### Macros that should be counted as one or more words
-# Macros that represent text may be declared here. The value gives
-# the number of words the macro represents.
-my %TeXmacrocount=('\LaTeX'=>1,'\TeX'=>1,'beginabstract'=>['header','headerword']);
 
 ### Environments
 # The %TeXenvir hash provides content parsing rules (parser states).
@@ -606,20 +630,42 @@ my %TeXmacrocount=('\LaTeX'=>1,'\TeX'=>1,'beginabstract'=>['header','headerword'
 # is not clear if they will be in inlined or displayed math.
 my %TeXenvir;
 add_keys_to_hash(\%TeXenvir,'ignore',
-    'titlepage','tabbing','tabular','thebibliography','lrbox');
+    'titlepage','tabbing','tabular','tabular*','thebibliography','lrbox');
 add_keys_to_hash(\%TeXenvir,'text',
     'document','letter','center','flushleft','flushright',
     'abstract','quote','quotation','verse','minipage',
     'description','enumerate','itemize','list',
-    'theorem','lemma','definition','corollary','example');
+    'theorem','thm','lemma','definition','corollary','example','proof','pf');
 add_keys_to_hash(\%TeXenvir,'inlinemath',
     'math');
 add_keys_to_hash(\%TeXenvir,'displaymath',
     'displaymath','equation','equation*','eqnarray','eqnarray*','align','align*',);
 add_keys_to_hash(\%TeXenvir,'float',
-    'float','figure','picture','table');
+    'float','picture','figure','figure*','table','table*');
 add_keys_to_hash(\%TeXenvir,'xall',
     'verbatim','tikzpicture');
+
+# Environment parameters
+my $PREFIX_ENVIR='begin'; # Prefix used for environment names
+add_keys_to_hash(\%TeXmacro,1,
+    'beginthebibliography','beginlrbox','beginminipage');
+add_keys_to_hash(\%TeXmacro,2,
+    'beginlist');
+add_keys_to_hash(\%TeXmacro,['ignore'],
+    'beginletter');
+add_keys_to_hash(\%TeXmacro,['xxx'],
+    'begintabular');
+add_keys_to_hash(\%TeXmacro,['ignore','xxx'],
+    'begintabular*');
+add_keys_to_hash(\%TeXmacro,['[','text'],
+    'begintheorem','beginthm','beginlemma','begindefinition','begincorollary','beginexample','beginproof','beginpf');
+add_keys_to_hash(\%TeXmacro,['nooptions'],
+    'beginverbatim');
+
+### Macros that should be counted as one or more words
+# Macros that represent text may be declared here. The value gives
+# the number of words the macro represents.
+my %TeXmacrocount=('\LaTeX'=>1,'\TeX'=>1,'beginabstract'=>['header','headerword']);
 
 ### Macros for including tex files
 # Allows \macro{file} or \macro file. If the value is 0, the filename will
@@ -638,10 +684,15 @@ convert_hash(\%TeXenvir,\&key_to_state);
 
 ### Package rule definitions
 
+my %PackageTeXpreamble=(); # TeXpreamble definitions per package
+my %PackageTeXpackageinc=(); # TeXpackageinc definitions per package
+my %PackageTeXfloatinc=(); # TeXfloatinc definitions per package
 my %PackageTeXmacro=(); # TeXmacro definitions per package
 my %PackageTeXmacrocount=(); # TeXmacrocount definitions per package
 my %PackageTeXenvir=(); # TeXenvir definitions per package
 my %PackageTeXfileinclude=(); # TeXfileinclude definitions per package
+my %PackageSubpackage=(); # Subpackages to include (listed in array [...])
+
 
 # Rules for bibliography inclusion
 $PackageTeXmacrocount{'%incbib'}={'beginthebibliography'=>['header','hword']};
@@ -649,8 +700,57 @@ $PackageTeXmacro{'%incbib'}={'\bibliography'=>1};
 $PackageTeXenvir{'%incbib'}={'thebibliography'=>'text'};
 $PackageTeXfileinclude{'%incbib'}={'\bibliography'=>'<bbl>'};
 
+# Rules for package alltt
+$PackageTeXenvir{'alltt'}={
+    'alltt'=>'xall'};
+
+# Rules for package babel
+# NB: Only core macros implemented, those expected found in regular documents
+$PackageTeXenvir{'babel'}={
+    'otherlanguage'=>'text','otherlanguage*'=>'text'};
+$PackageTeXmacro{'babel'}={
+    '\selectlanguage'=>1,'\foreignlanguage'=>['ignore','text'],
+    'beginotherlanguage'=>1,'beginotherlanguage*'=>1};
+
+# Rules for package color
+$PackageTeXmacro{'color'}={
+    '\textcolor'=>['ignore','text'],'\color'=>1,'\pagecolor'=>1,'\normalcolor'=>0,
+    '\colorbox'=>['ignore','text'],'\fcolorbox'=>['ignore','ignore','text'],
+    '\definecolor'=>3,\'DefineNamedColor'=>4};
+
 # Rules for package endnotes
 $PackageTeXmacro{'endnotes'}={'\endnote'=>['oword'],'\endnotetext'=>['oword'],'\addtoendnotetext'=>['oword']};
+
+# Rules for package fancyhdr
+$PackageTeXmacro{'fancyhdr'}={
+    '\fancyhf'=>1,'\lhead'=>1,'\chead'=>1,'\rhead'=>1,'\lfoot'=>1,'\cfoot'=>1,'\rfoot'=>1};
+
+# Rules for package geometry
+$PackageTeXmacro{'geometry'}={
+    '\geometry'=>1,'\newgeometry'=>1,'\restoregeometry'=>0,,'\savegeometry'=>1,'\loadgeometry'=>1};
+
+# Rules for package graphicx
+$PackageTeXmacro{'graphicx'}={
+    '\DeclareGraphicsExtensions'=>1,'\graphicspath'=>1,
+    '\includegraphics'=>['[','ignore','ignore'],
+    '\includegraphics*'=>['[','ignore','[','ignore','[','ignore','ignore'],
+    '\rotatebox'=>1,'\scalebox'=>1,'\reflectbox'=>1,'\resizebox'=>1};
+
+# Rules for package hyperref (urls themselves counted as one word)
+# NB: \hyperref[label]{text} preferred over \hyperref{url}{category}{name}{text}
+# NB: Macros for use in Form environments not implemented
+$PackageTeXmacro{'hyperref'}={
+    '\hyperref'=>['[','ignore','text'],
+    '\url'=>1,'\nolinkurl'=>1,'\href'=>['ignore','text'],
+    '\hyperlink'=>['ignore','text'],'\hypertarget'=>['ignore','text'],
+    '\hyperbaseurl'=>1,'\hyperimage'=>['ignore','text'],'\hyperdef'=>['ignore','ignore','text'],
+    '\phantomsection'=>0,'\autoref'=>1,'\autopageref'=>1,
+    '\hypersetup'=>1,'\urlstyle'=>1,
+    '\pdfbookmark'=>2,'\currentpdfbookmark'=>2,'\subpdfbookmark'=>2,'\belowpdfbookmark'=>2,
+    '\pdfstringref'=>2,'\texorpdfstring'=>['text','ignore'],
+    '\hypercalcbp'=>1,'\Acrobatmenu'=>2};
+$PackageTeXmacrocount{'hyperref'}={
+    '\url'=>1,'\nolinkurl'=>1};
 
 # Rules for package import
 $PackageTeXfileinclude{'import'}={
@@ -658,12 +758,59 @@ $PackageTeXfileinclude{'import'}={
     '\inputfrom'=>'dir file','\subinputfrom'=>'subdir file',
     '\includefrom'=>'dir file','\subincludefrom'=>'subdir file'};
 
+# Rules for package inputenc
+$PackageTeXmacro{'inputenc'}={
+    '\inputencoding'=>1};
+
 # Rules for package listings
-$PackageTeXmacro{'listings'}={'\lstset'=>['ignore'],'\lstinputlisting'=>['ignore']};
 $PackageTeXenvir{'listings'}={'lstlisting'=>'xall'};
+$PackageTeXmacro{'listings'}={'\lstset'=>['ignore'],'\lstinputlisting'=>['ignore']};
 
 # Rules for package psfig
-$PackageTeXmacro{'psfig'}={('\psfig'=>1)};
+$PackageTeXmacro{'psfig'}={'\psfig'=>1};
+
+# Rules for package sectsty
+$PackageTeXmacro{'sectsty'}={
+    '\allsectionsfont'=>1,'\partfont'=>1,'\chapterfont'=>1,'\sectionfont'=>1,
+    '\subsectionfont'=>1,'\subsubsectionfont'=>1,'\paragraphfont'=>1,'\subparagraphfont'=>1,
+    '\minisecfont'=>1,'\partnumberfont'=>1,'\parttitlefont'=>1,'\chapternumberfont'=>1,
+    '\chaptertitlefont'=>1,'\nohang'=>0};
+
+# Rules for package setspace
+$PackageTeXenvir{'setspace'}={
+    'singlespace'=>'text','singlespace*'=>'text','onehalfspace'=>'text','doublespace'=>'text',
+    'spacing'=>'text'};
+$PackageTeXmacro{'setspace'}={
+    'beginspacing'=>1,
+    '\singlespacing'=>0,'\onehalfspacing'=>0,'\doublespacing'=>0,
+    '\setstretch'=>1,'\SetSinglespace'=>1};
+
+# Rules for package subfiles
+$PackageTeXfileinclude{'subfiles'}={
+    '\subfile'=>'file'};
+
+# Rules for package url
+# NB: \url|...| variant not implemented, only \url{...}
+# NB: \urldef{macro}{url} will not be counted
+$PackageTeXmacro{'url'}={
+    '\url'=>1,'\urldef'=>2,'\urlstyle'=>1,'\DeclareUrlCommand'=>['ignore','xxx']};
+$PackageTeXmacro{'setspace'}={
+    '\url'=>1};
+
+# Rules for package wrapfig
+$PackageTeXenvir{'wrapfig'}={
+    'wrapfigure'=>'float','wraptable'=>'float'};
+$PackageTeXmacro{'wrapfig'}={
+    'beginwrapfigure'=>2,'beginwraptable'=>2};
+
+# Rules for package xcolor (reimplements the color package)
+# NB: only main macros (mostly from package color) included
+$PackageTeXmacro{'xcolor'}={
+    '\textcolor'=>['ignore','text'],'\color'=>1,'\pagecolor'=>1,'\normalcolor'=>0,
+    '\colorbox'=>['ignore','text'],'\fcolorbox'=>['ignore','ignore','text'],
+    '\definecolor'=>3,\'DefineNamedColor'=>4,
+    '\colorlet'=>2};
+
 
 ###### Main script
 
@@ -1274,6 +1421,9 @@ sub tc_macro_param_option {
     return 0;
   }
   elsif ($instr eq 'macro') {
+    if (!($macro=~/^\\/)) {
+      warning($tex,'%TC:macro '.$macro.': should perhaps be \\'.$macro.'?');
+    }
     return _tc_macro_set_param($tex,\%TeXmacro,$instr,$macro,$param);
   }
   elsif ($instr eq 'exclude') {
@@ -1446,19 +1596,45 @@ sub transition_to_content_state {
   return $state;
 }
 
+# Remove all rules
+sub remove_all_rules {
+  %TeXpackageinc=();
+  %TeXpreamble=();
+  %TeXfloatinc=();
+  %TeXmacro=();
+  %TeXmacrocount=();
+  %TeXenvir=();
+  %TeXfileinclude=();
+  %IncludedPackages=();
+}
+
 # Process package inclusion
 sub include_package {
   my ($incpackage,$tex)=@_;
-  my $sub;
+  if (defined $IncludedPackages{$incpackage}) {return;}
+  $IncludedPackages{$incpackage}=1;
+  # Add rules for package, preamble and float inclusion, and add to macro rules
+  _add_package(\%TeXpackageinc,\%PackageTeXpackageinc,$incpackage,\&__dummy,$tex);
+  _add_package(\%TeXpreamble,\%PackageTeXpreamble,$incpackage,\&keyarray_to_state,$tex);
+  _add_package(\%TeXfloatinc,\%PackageTeXfloatinc,$incpackage,\&keyarray_to_state,$tex);
+  _add_package(\%TeXmacro,\%PackageTeXpackageinc,$incpackage,\&keyarray_to_state,$tex);
+  _add_package(\%TeXmacro,\%PackageTeXpreamble,$incpackage,\&keyarray_to_state,$tex);
+  _add_package(\%TeXmacro,\%PackageTeXfloatinc,$incpackage,\&keyarray_to_state,$tex);
+  # Add regular rules
   _add_package(\%TeXmacro,\%PackageTeXmacro,$incpackage,\&keyarray_to_state,$tex);
   _add_package(\%TeXmacrocount,\%PackageTeXmacrocount,$incpackage,\&keyarray_to_cnt,$tex);
   _add_package(\%TeXenvir,\%PackageTeXenvir,$incpackage,\&key_to_state,$tex);
   _add_package(\%TeXfileinclude,\%PackageTeXfileinclude,$incpackage,\&__dummy,$tex);
+  if (my $subpackages=$PackageSubpackage{$incpackage}) {
+    foreach my $sub (@{$subpackages}) {
+      include_package($sub,$tex);
+    }
+  }
 }
 
 # Add package rules if defined
 sub _add_package {
-  my ($target,$source,$name,$convert)=@_;
+  my ($target,$source,$name,$convert,$tex)=@_;
   my $sub;
   if ($sub=$source->{$name}) {
     __add_to_hash($target,$sub,$convert);
@@ -1813,14 +1989,14 @@ sub _parse_unit {
     }
     # Pick the first matching interpretation:
     if ($state==$STATE_EXCLUDE_ALL) {
-      # Ignore everything
+      # ignore everything
     } elsif ($tex->{'type'}==$TOKEN_SPACE) {
       # space or other code that should be passed through without styling
       flush_next($tex,' ');
     } elsif ($next eq '\documentclass') {
-      # starts preamble
+      # defines document class and starts preamble
       set_style($tex,'document');
-      __gobble_macro_parms($tex,1,$_STATE_NULL);
+      _parse_documentclass_params($tex);
       while (!($tex->{'eof'})) {
         _parse_unit($tex,$STATE_PREAMBLE);
       }
@@ -1841,7 +2017,10 @@ sub _parse_unit {
       set_style($tex,'ignore');
     } elsif ($next eq '}') {
       error($tex,'Encountered } without corresponding {.');
-    } elsif ($tex->{'type'}==$TOKEN_MACRO && $state==$STATE_EXCLUDE_STRONGER) {
+    } elsif ($state==$STATE_EXCLUDE_STRONGER) {
+      # ignore remaining tokens
+      set_style($tex,'ignore');
+    } elsif ($tex->{'type'}==$TOKEN_MACRO && $state==$STATE_EXCLUDE_STRONGER) {#TODO: Not needed any more
       # ignore macro call
       set_style($tex,'ignore');
     } elsif ($tex->{'type'}==$TOKEN_MACRO) {
@@ -1911,14 +2090,14 @@ sub _parse_macro {
   } elsif (($state==$STATE_FLOAT) && ($substat=$TeXfloatinc{$next})) {
     # text included from float
     set_style($tex,'cmd');
-    push @macro,__gobble_macro_parms($tex,$substat,$_STATE_NULL);
+    push @macro,__gobble_macro_parms($tex,$substat,$__STATE_NULL);
   } elsif ($state==$STATE_PREAMBLE && defined ($substat=$TeXpreamble{$next})) {
     # parse preamble include macros
     set_style($tex,'cmd');
-    push @macro,__gobble_macro_parms($tex,$substat,$_STATE_NULL);
+    push @macro,__gobble_macro_parms($tex,$substat,$__STATE_NULL);
   } elsif (state_is_exclude($state)) {
    # ignore
-    push @macro,__gobble_options($tex);
+    push @macro,__gobble_options($tex),'/*ignored*/';
   } elsif ($next eq '\(') {
     # math inline
     _parse_math($tex,$state,$CNT_COUNT_INLINEMATH,'\)');
@@ -1941,7 +2120,7 @@ sub _parse_macro {
   } elsif ($next =~ /^\\[^\w\_]$/) {
     # handle \<symbol> as single symbol macro
   } else {
-    push @macro,__gobble_options($tex);
+    push @macro,__gobble_options($tex),'/*defaultrule*/';
   }
   $MacroUsage{join('',@macro)}++;
 }
@@ -2037,7 +2216,7 @@ sub _parse_envir {
     $next=$PREFIX_ENVIR.$envirname;
     __count_macrocount($tex,$next,$state);
     if (defined (my $def=$TeXmacro{$next})) {
-      push @macro,__gobble_macro_parms($tex,$def,$_STATE_NULL);
+      push @macro,__gobble_macro_parms($tex,$def,$__STATE_NULL);
     } else {
       push @macro,__gobble_options($tex);
     }
@@ -2056,18 +2235,7 @@ sub _parse_envir {
   } else {
     $substat=__new_state($substat,$state);
   }
-  if (!state_inc_envir($substat)) {
-    # Keep parsing until appropriate \end arrives ignoring all else
-    while (!$tex->{'eof'}) {
-      _parse_unit($tex,$substat,'\end');
-      if ($tex->{'line'} =~ s/^(\s*)\{\Q$envirname\E\}[ \t\r\f]*//) {
-        # gobble \end parameter
-        flush_next($tex,$localstyle,$state);
-        print_style($1,$localstyle);
-        return;
-      }
-    }
-  } else {
+  if (state_inc_envir($substat)) {
     # Parse until \end arrives, and check that it matches
     _parse_unit($tex,$substat,'\end');
     flush_next_gobble_space($tex,$localstyle,$state);
@@ -2077,6 +2245,18 @@ sub _parse_envir {
       assert($envirname eq $1,$tex,"Environment \begin{$envirname} ended with end{$1}.");
     } else {
       error($tex,"Environment ended while waiting for \end{$envirname}.");
+    }  
+  } else {
+    # Keep parsing until appropriate \end arrives ignoring all else
+    while (!$tex->{'eof'}) {
+      _parse_unit($tex,$substat,'\end');
+      if ($tex->{'line'} =~ s/^(\s*)(\{\Q$envirname\E\})[ \t\r\f]*//) {
+        # gobble \end parameter and end environment
+        flush_next($tex,$localstyle,$state);
+        print_style($1,$localstyle);
+        print_style($2,$localstyle);
+        return;
+      }
     }
   }
 }
@@ -2146,7 +2326,7 @@ sub _parse_include_package {
   my ($tex)=@_;
   set_style($tex,'document');
   __gobble_option($tex);
-  if ( $tex->{'line'}=~s/^\{((\w+)(\s*,\s*\w+)*)\}// ) {
+  if ( $tex->{'line'}=~s/^\{(([\w\-]+)(\s*,\s*[\w\-]+)*)\}// ) {
     print_style("{$1}",'document');
     foreach (split(/\s*,\s*/,$1)) {
       $MacroUsage{"<package:$_>"}++;
@@ -2156,7 +2336,20 @@ sub _parse_include_package {
     _parse_unit($tex,$STATE_IGNORE);
     error($tex,'Could not recognise package list, ignoring it instead.');
   }
-  __gobble_options($tex);
+}
+
+# Parse \documentclass parameters and include rules
+sub _parse_documentclass_params {
+  my ($tex)=@_;
+  my $options=__gobble_option($tex);
+  if ( $tex->{'line'}=~s/^(\{\s*([^\{\}\s]+)\s*\})// ) {
+    print_style("$1",'document');
+    $MacroUsage{"<documentclass:$2>"}++;
+    include_package("class%$2",$tex);
+  } else {
+    _parse_unit($tex,$STATE_IGNORE);
+    error($tex,'Could not identify document class.');
+  }
 }
 
 # Count macrocount using given state
@@ -2222,8 +2415,9 @@ sub __gobble_macro_parms {
     $n=$parm;
     $parm=[($STATE_IGNORE)x$n];
   }
-  # TODO: Do not gobble macro modifier when handled as option
+  # TODO: Optionally gobble macro modifier?
   if ($n>0) {push @ret,__gobble_macro_modifier($tex);}
+  my $auto_gobble_options=1;
   for (my $j=0;$j<$n;$j++) {
     my $p=$parm->[$j];
     if ($p==$_STATE_OPTION) {
@@ -2236,14 +2430,19 @@ sub __gobble_macro_parms {
         _parse_unit($tex,__new_state($p,$oldstat),']');
         set_style($tex,'optparm');
       }
+    } elsif ($p==$_STATE_NOOPTION) {
+      $auto_gobble_options=0;
+    } elsif ($p==$_STATE_AUTOOPTION) {
+      $auto_gobble_options=1;
     } else {
       # Parse macro parameter
-      push @ret,__gobble_options($tex);
+      if ($auto_gobble_options) {push @ret,__gobble_options($tex);}
       push @ret,$STRING_PARAMETER;
       _parse_unit($tex,__new_state($p,$oldstat),$_PARAM_);
     }
   }
-  push @ret,__gobble_options($tex);
+  #TODO: Drop default gobbling of option at end?
+  if ($auto_gobble_options) {push @ret,__gobble_options($tex);}
   return @ret;
 }
 
@@ -2318,7 +2517,7 @@ sub _get_next_token {
       else {return __set_token($tex,$match,$TOKEN_SYMBOL);}
     } elsif ($ch eq '\\') {
       if ($tex->{'line'}=~s/^(\\[{}%])//) {return __set_token($tex,$1,$TOKEN_SYMBOL);}
-      if ($tex->{'line'}=~s/^(\\([a-zA-Z@]+|[^a-zA-Z@]))//) {return __set_token($tex,$1,$TOKEN_MACRO);}
+      if ($tex->{'line'}=~s/^(\\([a-zA-Z@]+|[^a-zA-Z@\t\r\n\f]))//) {return __set_token($tex,$1,$TOKEN_MACRO);}
       return __get_chtoken($tex,$ch,$TOKEN_END);
     } elsif ($ch eq '$') {
       $tex->{'line'}=~s/^(\$\$?)//;
@@ -2474,8 +2673,8 @@ sub next_subcount {
 # Add count to total as subcount
 sub add_to_total {
   my ($total,$count)=@_;
-  if (_count_is_null($count)) {return;}
   _add_to_count($total,$count);
+  if (_count_is_null($count)) {return;}
   push @{$total->{'subcounts'}},$count;
   $count->{'parentcount'}=$total;
 }
@@ -3036,6 +3235,11 @@ sub print_help_on_rule {
     print "\nSpecify macro or environment name after the -h= option.\n";
     return;
   }
+  if ($arg=~/^[\w\-\%]+:/) {
+    remove_all_rules();
+    %rules=();
+    while ($arg=~s/^([\w\-\%]+)://) {include_package($1);}
+  }
   if ($def=$rules{$arg}) {
     print "\nSpecial rule (hard coded) for $arg\n";
     print $def."\n";
@@ -3081,6 +3285,7 @@ sub _print_rule_macro {
     foreach my $state (@{$def}) {
       if ($state==$_STATE_OPTION) {$optionflag=1;}
       elsif ($optionflag) {
+        $optionflag=0;
         print " - Optional [] containing $state2desc{$state}\n";
       } else {
         print " - $state2desc{$state}\n";

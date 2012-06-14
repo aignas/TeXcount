@@ -532,11 +532,13 @@ Note that the definition of \code{\%TeXmacro} starts by including \code{\%TeXpre
 
 A macro can be specified to take a given number of parameters: this will typically be \code{\{\ldots\}} blocks following the macro. For each of these parameters, a separate parsing state can be specified. This is represented by an array with one element for each parameter, the elements being the parsing state (\code{\$STATE_\wild}) with which that parameter should be parsed.
 
-An optional specification of a parameter handling rule can be to give the number of parameters to ignore. \TeXcount{} will check it the specified rule is an array (as described above) or a number and interpret the rule accordingly.
+In addition to the \code{\$STATE_\wild} rules are some modifier/option states, \code{\$_STATE_\wild}. The \code{\$STATE_OPTION} states indicates that the next rule in the list is an optional parameter enclosed in \code{[]}. By default \code{[]} options are ignored, which can be swithed off by \code{\$STATE_NOOPTION} or on by \code{\$STATE_AUTOOPTION}.
+
+An alternative specification of a parameter handling rule is to give the number of parameters to ignore. \TeXcount{} will check if the specified rule is an array (as described above) or a number and interpret the rule accordingly.
 
 The hashes \code{\%TeXmacro}, \code{\%TeXpreamble} and \code{\%TeXfloatinc} all take values that are this kind of parameter handling rules, as are q\code{\%TeXpackageinc} since they are included in \code{\%TeXmacro}.
 
-Throughout the script, parsing states are referred to using the \code{\$STATE_\wild} constants. However, in the initial definitions of the hashes (as well as for the corresponding hash maps for package specific rule), numberical codes are still in use. This is a remnant of previous versions of \TeXcount{} from before the \code{\$STATE_\wild} constants were implemented and numberical constants used throughout the script. Since the actual numberical values of the \code{\$STATE_\wild} constants are not required to remain fixed, the numerical values in the initial definition of \code{\%TeXmacro}, etc. are converted to the new parsing states. These conversion rules, together with other keywords representing parsing states, are stored in \code{\%key2state} and applied through calls to \code{convert_hash} accompanied by \code{keyarray_to_state} or \code{key_to_state}.
+Throughout the script, parsing states are referred to using the \code{\$STATE_\wild} constants. In previous versions, however, these codes were hard-coded into the script and used both to set up the hashes and to specify new rules through \%TC instructions. For backward compatibility, the old numerical state codes remain in the conversions from keywords to \code{\$STATE_\wild} constants as stored in \code{\%key2state} and applied through calls to \code{convert_hash} accompanied by \code{keyarray_to_state} or \code{key_to_state}.
 
 
 \subsection{File inclusion and the \code{\%TeXfileinclude} hash}
@@ -568,6 +570,15 @@ In \code{include_file}, the file is located (based on search path) and either ap
 The \code{@filelist} array contains elements which are themselves arrays on the form \code{[file,path,\ldots]} where the first element is the path to the file to be included, and the remaining elements are the search paths used to set the \code{PATH} values of the \Obj{TeXcode} object. For the top level files, i.e. the ones specified on the command line, the search path will contain only \code{\$workdir}: the directory from which \TeXcount{} is executed unless \code{-dir} is used to specify otherwise. If more directories are added to the path, \code{\$workdir} will remain the last directory of the search path, while the first directory of the search path will be considered the current directory.
 
 File inclusion macros can also take parameters that should be parsed using regular macro parsing rules. The \code{TeXmacro} hash will be checked for \code{@pre\bs{macroname}} and \code{@post\bs{macroname}} entries which will be applied before and after the file handling rules.
+
+
+\subsection{Package and document class specific rules}
+
+Whenever \TeXcount{} encounters a package inclusion, it will check for package specific rules. These are defined in hashes names \code{\%PackageTeXmacro} etc. which maps the package name to the hash map of rules to be added to \code{\%TeXmacro} etc. There is an additional \code{\%PackageSubpackage} which for each package name in the set of keys maps to a list of packages whose rules should automatically be included.
+
+Similarly, rules specific to particular document classes may be implemented by using the key \code{class\%\parm{name}} instead of the package name, and these will then be added to the set of parsing rules if \code{\bs{documentclass}\{\parm{name}\}} is encountered.
+
+Note that rules for including the bibliography is also stored in these hashes under the key \code{\%incbib}.
 
 
 

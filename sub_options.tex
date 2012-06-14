@@ -123,7 +123,7 @@
 
 \option[-h, -?, --help, /?]Help.
 
-\option[-h=, -?=, --help=, /?=]Help on particular macro or group name: gives the parsing rule for that macro or group if defined. You may have to use \code{-incpackage=}package if the rule is defined for a specific package, and this option must be placed \emph{before} the \code{-h=} option on the command line.
+\option[-h=, -?=, --help=, /?=]Help on particular macro or group name: gives the parsing rule for that macro or group if defined. If the the macro or environment is package specific, use \code{-h=\parm{package}:\parm{name}}; replace \code{\parm{package}} with \code{class\%\parm{name}} if it is specific to a document class.
 
 \option[-help-options, -h-opt]Lists all TeXcount options and help on them.
 

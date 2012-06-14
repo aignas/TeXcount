@@ -99,7 +99,7 @@ Some macros are words by themselves: e.g. \code{\bs{LaTeX}}. These are counted a
 
 \subsection{What \TeXcount{} does not do}
 
-While an ideal solution should be able to expand the macro instructions, thus being able to handle new macros, that would at it's worst require reimplementing much of \TeX{}, something that is clearly unrealistic. Instead, I have opted for a simpler solution: to define rules stating which paramters to count and which to ignore and allowing for such rules to be added easily. Thus, \TeXcount{} cannot handle macros that may take a variable number of parameters. Nor can it handle macros that takes parameters on forms other than \code{\{parameter\}}. However, support has no been added for macro options on the form \code{[\ldots]} to be parsed.
+While an ideal solution should be able to expand the macro instructions, thus being able to handle new macros, that would at it's worst require reimplementing much of \TeX{}, something that is clearly unrealistic. Instead, I have opted for a simpler solution: to define rules stating which paramters to count and which to ignore and allowing for such rules to be added easily. Thus, \TeXcount{} cannot handle macros that may take a variable number of parameters. Nor can it handle macros that takes parameters on forms other than \code{\{parameter\}}. However, support has now been added for macro options on the form \code{[\ldots]} to be parsed.
 
 In general, while \TeXcount{} does the parsing in some detail, it does not do it exacly as \TeX{} does it. In some respects there may therefore be critical differences: e.g. while \TeX{} reads one character at a time, \TeXcount{} reads one word at a time, so while \LaTeX{} would interpret \code{\bs{cite} me} as \code{\bs{}cite\{m\}e}, \TeXcount{} would interpret it like \code{\bs{cite}\{me\}}.
 
@@ -434,7 +434,7 @@ There are a set of alternative rules that may be used for parsing macro paramete
  Stronger ignore, handles macros as isolated tokens without handling their parameters,
  to use with macro definitions like \code{\bs{newcommand}} and \code{\bs{def}}.
 \option{Exclude all}[-4]{xall}
- Ignore all, including unbalanced braces (used by \code{\%TC:ignore} and the \code{verbatim} environment).
+ Ignore all, including unbalanced braces (e.g. used by \code{\%TC:ignore} and the \code{verbatim} environment). This rule may be used for environment contents, but not for macro or environment parameters or options since the exclusion causes \{ and [ to be ignored.
 \end{description}
 
 The keys are used to identify the rule. Environment content rules are simply specified by giving the desired key. Parameter rules are on the form \code{[\textit{rule},\textit{rule},\ldots]} with one rule provided per parameter, where each rule is either one of the above keywords or \code{option:\textit{rule}} to indicate an optional parameter on the form \code{[\ldots]}; alternatively, a single integer can be provided (not enclosed in \code{[]} to indicate that the indicated number of parameters should be ignored.

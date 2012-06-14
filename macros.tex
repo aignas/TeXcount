@@ -1,6 +1,6 @@
 %% LaTeX macros
 \usepackage{relsize}
-\usepackage{color}
+\usepackage[dvipsnames]{xcolor}
 
 % Define underscore to be a regular character in text mode
 \begingroup
@@ -11,7 +11,7 @@
 \catcode`\_=12
 
 % Set version number
-\newcommand\version{$3.0.\alpha$}
+\newcommand\version{$3.0.\beta$}
 
 \newcommand\copyrightfootnote{
 \footnotetext{Copyright (2008-2012) of Einar Andreas R{\o}dland, distributed
@@ -22,8 +22,9 @@ under the \LaTeX{} Project Public License (LPPL).}
 \newcommand\TeXcount{{\TeX}count}
 
 % Text formats
-\newcommand\code[1]{{\smaller\textsf{#1}}}
-\newcommand\bigcode[1]{\textsf{#1}}
+\newcommand\codestyle[1]{\textsf{\color{Blue}#1}}
+\newcommand\code[1]{{\smaller\codestyle{#1}}}
+\newcommand\bigcode[1]{\codestyle{#1}}
 \newcommand\codeline[1]{\begin{quote}\code{#1}\end{quote}}
 \newcommand\bs[1]{\textbackslash#1}
 \newcommand\URL[1]{\textsf{\small #1}}
@@ -31,8 +32,8 @@ under the \LaTeX{} Project Public License (LPPL).}
 % Description items: options, parameters, optional parameters
 % These are also interpreted by dos2html.pl
 \def\option[#1]{\item[\bigcode{#1}]\hskip 0pt plus 10pt}
-\def\parm#1{\textit{#1}}
-\def\opt#1{\textit{[#1]}}
+\def\parm#1{\textit{\color{OliveGreen}#1}}
+\def\opt#1{\parm{[#1]}}
 \def\alt#1{[#1]}
 
 % Mark off notification in contents for good visibility
