@@ -17,6 +17,8 @@
 
 \option[-v4]Same as \code{-v3 -showstate}.
 
+\option[-v=\ldots, -v\alt{[0-4]}\ldots]Allows detailed control of which elements are included in the verbose output. The provided values is a list of styles or style categories separated by \code{+} or \code{-} to indicate if they should be added or removed from the list of included styles. Style categories start with capital letter and include \code{Words}, \code{Macros}, \code{Options}; the individual styles are in all lower case and include \code{word}, \code{hword}, \code{option}, \code{ignore}.
+
 \option[-showstate]Show internal states (with verbose).
 
 \option[-brief]Only prints a one line summary of the counts for each file.
@@ -45,6 +47,10 @@
 
 \option[-nc, -nocol]No colours (colours require ANSI). Default under Windows.
 
+\option[-nosep, -noseparator]No separating character/string added after each word in the verbose output (default).
+
+\option[-sep=, -separator=]Separating character or string to be added after each word in the verbose output.
+
 \option[-relaxed]Relaxes the rules for matching words and macro options.
 
 \option[-restricted]Restricts the rules for matching words and macro options.
@@ -63,7 +69,9 @@
 
 \option[-incpackage=]Include rules for a given package.
 
-\option[-dir\alt{=\ldots}]Specify working directory which will serve as root for all include files. Default (\code{-dir=""}) is to use the present directory. Use \code{-dir} to use path of the main \LaTeX{} document.
+\option[-dir\alt{=\ldots}]Specify working directory which will serve as root for all include files. The default (\code{-dir=.}) is to use the current directory, i.e. from which \TeXcount{} is executed: the path can be absolute or relative to the current directory. Use \code{-dir} to use the path of the main \LaTeX{} document as working directory.
+
+\option[-auxdir\alt{=\ldots}]Specify the directory of the auxilary files, e.g. the bibliography (\code{.bbl}) file. The default setting (\code{-auxdir} only) indicates that auxilary files are in the working directory (from the \code{-dir} or \code{-dir=} option). If \code{-auxdir=} is used to provide a path and \code{-dir=} is used to specify the working directory, the path to the auxilary directory is take to be relative to the current folder (from which \TeXcount{} is executed); if used with \code{-dir}, the working directory is taken from the path of the parsed file, and the auxilary directory is taken to be relative to this (unless an absolute path is provided).
 
 \option[-enc=, -encoding=]Specify encoding to use in input (and text output).
 
@@ -77,21 +85,31 @@
 
 \option[-jp, -japanese]Turn on Japanese mode in which Japanese characters (kanji and kana) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-JP) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}.
 
-\option[-kr, -korean]Turn on Korean mode in which Korean characters (hangul and han) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-KR) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}. \emph{NB: Support for Korean is experimental.}
+\option[-kr, -korean]Turn on Korean mode in which Korean characters (hangul and han) are counted. I recommend using UTF-8, although \TeXcount{} will also test other encodings (e.g. EUC-KR) if UTF-8 fails, and other encodings may be specified by \code{-encoding=}.
 
-\option[-kr-words, -korean-words]Korean mode in which hangul words are counted (i.e. as words separated by spaces) rather than characters. Han characters are still counted as characters. See also \code{-korean}. \emph{NB: Support for Korean is experimental.}
+\option[-kr-words, -korean-words]Korean mode in which hangul words are counted (i.e. as words separated by spaces) rather than characters. Han characters are still counted as characters. See also \code{-korean}.
 
 \option[-chinese-only, ..., -korean-words-only]As options \code{-chinese}, ..., \code{-korean-words}, but also excludes other alphabets (e.g. letter-based words) and logographic characters.
 
 \option[-char, -letter]Count letters instead of words. This count does not include spaces.
 
+\option[-out=]Send output to file. Takes filename as value.
+
 \option[-html]Output in HTML format.
 
 \option[-htmlcore]Only HTML body contents.
 
+\option[-htmlfile=]File containing a template HTML document with \code{<!-- TeXcount -->} included somewhere to indicate the location where the TeXcount output from the parsing should be inserted.
+
+\option[-css=]Reference to CSS to be included in the HTML output instead of including the style definition directly in the output.
+
+\option[-cssfile=, -css=file:]File containing style definitions to be included into the HTML output instead of the default styles.
+
 \option[-freq\alt{=\#}]Count individual word frequencies. Optionally, give minimal frequency required to be included in output.
 
-\option[-stat]Produce statistics on language usage, i.e. based on the alphabets and logograms included. 
+\option[-stat]Produce statistics on language usage, i.e. based on the alphabets and logograms included.
+
+\option[-macrostat, -macrofreq]Produce statistics on package, environment and macro usage. 
 
 \option[-codes]Display an overview of the colour codes. Can be used as a separate option to only display the colour codes, or together with files to parse.
 
@@ -106,6 +124,14 @@
 \option[-h, -?, --help, /?]Help.
 
 \option[-h=, -?=, --help=, /?=]Help on particular macro or group name: gives the parsing rule for that macro or group if defined. You may have to use \code{-incpackage=}package if the rule is defined for a specific package, and this option must be placed \emph{before} the \code{-h=} option on the command line.
+
+\option[-help-options, -h-opt]Lists all TeXcount options and help on them.
+
+\option[--help-option=, -h-opt=]Lists all TeXcount options containing the provided string: e.g. \code{-h-opt=inc} lists all options containing \code{inc}, while \code{-h-opt=-v} lists all options starting with \code{v}.
+
+\option[-help-style, -h-style]Lists all styles and style categories, i.e. those permitted used in -v={styles-list}.
+
+\option[-help-style=, -h-style=]Gives description of style or style category. 
 
 \option[-ver, --version]Print version number.
 

@@ -30,15 +30,20 @@ Instructions to \TeXcount{} can be given from within the
 \LaTeX{} document using \LaTeX{} comments on the format
 \codeline{\%TC:\textit{instruction [name] parameters}}
 where the name is use for instructions providing macro handling rules to give the name of the macro or group for which the rule applies.
-
+%
 \input{sub_tc_other}
 
-\subsection{Adding macro handling rules}
-
-The macro handling rules all take the format
+Instructions for adding macro handling rules all take the format
 \codeline{\%TC:\textit{instruction name parameters}}
-where the name indicates the macro (with backslash) or group name for which the rule applies.
-
+where the name indicates the macro (with backslash) or group name for which the rule applies:
+%
 \input{sub_addrules}
+
+The available parser rules for environment contents and macro parameters are \code{word}/\code{text}, \code{headerword}, \code{otherword}, \code{header}, \code{float}, \code{inlinemath}, \code{displaymath}, \code{ignore}, \code{xx} (strong exclude), \code{xxx} (stronger exclude), \code{xall} (exclude all) or any of their aliases.
+
+The available counters are \code{word}/\code{text}, \code{headerword}, \code{otherword}, \code{header}, \code{float}, \code{inlinemath}, \code{displaymath} or any of their aliases.
+
+Available file specifications contain one or more of \code{input} (for \code{\bs{input}}), \code{file} (file path), \code{texfile} (use with \code{\bs{include}}), \code{<bbl>} (to include the bibliography file), \code{dir} and \code{subdir}. The \code{dir} and \code{subdir} are used to modify the search path within the included document (used with the \code{import} package).
+ 
 
 \end{document}
