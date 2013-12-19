@@ -15,8 +15,8 @@ BEGIN {
 
 ##### Version information
 
-my $versionnumber="3.0.beta";
-my $versiondate="2012 May 30";
+my $versionnumber="3.0";
+my $versiondate="2013 Jul 29";
 
 ###### Set global settings and variables
 
@@ -25,7 +25,7 @@ my %GLOBALDATA=
    ('versionnumber'  => $versionnumber
    ,'versiondate'    => $versiondate
    ,'maintainer'     => 'Einar Andreas Rodland'
-   ,'copyrightyears' => '2008-2012'
+   ,'copyrightyears' => '2008-2013'
    ,'website'        => 'http://app.uio.no/ifi/texcount/'
    );
 
@@ -36,6 +36,7 @@ my $Main=getMain();
 
 # Global options and settings
 my $htmlstyle=0; # Flag to print HTML
+my $texcodeoutput=0; # Flag to convert output to valid TeX text
 my $encoding=undef; # Selected input encoding (default will be guess)
 my @encodingGuessOrder=qw/ascii utf8 latin1/; # Encoding guessing order
 my $outputEncoding; # Encoding used for output
@@ -57,7 +58,8 @@ my $optionMacroStat=0; # Count macro, environment and package usage
 # Parsing details options
 my $strictness=0; # Flag to check for undefined environments 
 my $defaultVerbosity='0'; # Specification of default verbose output style
-my $printlevel=0; # Flag indicating level of verbose output
+my $defaultprintlevel=0; # Flag indicating default level of verbose output
+my $printlevel=undef; # Flag indicating level of verbose output
 my $showstates=0; # Flag to show internal state in verbose log
 my $showcodes=1; # Flag to show overview of colour codes (2=force)
 my $showsubcounts=0; # Write subcounts if #>this, or not (if 0)
@@ -381,7 +383,7 @@ $STYLES{'Words'}={'word'=>'blue','hword'=>'bold blue','oword'=>'blue','altwd'=>'
 $STYLES{'Macros'}={'cmd'=>'green','fileinc'=>'bold green'};
 $STYLES{'Options'}={'option'=>'yellow','optparm'=>'green'};
 $STYLES{'Ignored'}={'ignore'=>'cyan','math'=>'magenta'};
-$STYLES{'Excluded'}={'exclcmd'=>'yellow','exclenv'=>'yellow','exclmath'=>'yellow'};
+$STYLES{'Excluded'}={'exclcmd'=>'yellow','exclenv'=>'yellow','exclmath'=>'yellow','mathcmd'=>'yellow'};
 $STYLES{'Groups'}={'document'=>'red','envir'=>'red','mathgroup'=>'magenta'};
 $STYLES{'Comments'}={'tc'=>'bold yellow','comment'=>'yellow'};
 $STYLES{'Sums'}={'cumsum'=>'yellow'};
@@ -397,7 +399,7 @@ my %STYLE=%{$STYLES{$defaultVerbosity}};
 
 my @STYLE_LIST=('error','word','hword','oword','altwd',
   'ignore','document','cmd','exclcmd','option','optparm','envir','exclenv',
-  'mathgroup','exclmath','math','comment','tc','fileinc','state','cumsum');
+  'mathgroup','exclmath','math','mathcmd','comment','tc','fileinc','state','cumsum');
 my %STYLE_DESC=(
   'error'       => 'ERROR: TeXcount error message',
   'word'        => 'Text which is counted: counted as text words',
@@ -415,6 +417,7 @@ my %STYLE_DESC=(
   'mathgroup'   => '$  $: counted as one equation',
   'exclmath'    => '$  $: equation in excluded region',
   'math'        => '2+2=4: maths (inside $...$ etc.)',
+  'mathcmd'     => '$\macro$: macros inside maths',
   'comment'     => '% Comments: not counted',
   'tc'          => '%TC:TeXcount instructions: not counted',
   'fileinc'     => 'File to include: not counted but file may be counted later',
@@ -455,9 +458,9 @@ my $WordPattern; # Regex matching a word (defined in apply_language_options())
 # List of regexp patterns to be gobbled as macro option in and after
 # a macro.
 my %NamedMacroOptionPattern;
-$NamedMacroOptionPattern{'default'}='\[(\w|[,\-\s\~\.\:\;\+\?\*\_\=])*\]';
-$NamedMacroOptionPattern{'relaxed'}='\[[^\[\]\n]*\]';
-$NamedMacroOptionPattern{'restricted'}=$NamedMacroOptionPattern{'default'};
+$NamedMacroOptionPattern{'default'}='\[[^\[\]\n]*\]';
+$NamedMacroOptionPattern{'relaxed'}='\[[^\[\]\n]*(\n[^\[\]\n]+)\n?\]';
+$NamedMacroOptionPattern{'restricted'}='\[(\w|[,\-\s\~\.\:\;\+\?\*\_\=])*\]';
 my $MacroOptionPattern=$NamedMacroOptionPattern{'default'};
 
 ### Alternative language encodings
@@ -711,6 +714,10 @@ $PackageTeXenvir{'babel'}={
 $PackageTeXmacro{'babel'}={
     '\selectlanguage'=>1,'\foreignlanguage'=>['ignore','text'],
     'beginotherlanguage'=>1,'beginotherlanguage*'=>1};
+
+# Rules for package comment
+$PackageTeXenvir{'comment'}={
+    'comment'=>'xxx'};
 
 # Rules for package color
 $PackageTeXmacro{'color'}={
@@ -1056,8 +1063,9 @@ sub parse_options_format {
   elsif ($arg eq '-total') {$totalflag=1;}
   elsif ($arg eq '-0') {$briefsum=1;$totalflag=1;$printlevel=-1;$finalLineBreak=0;}
   elsif ($arg eq '-1') {$briefsum=1;$totalflag=1;$printlevel=-1;}
-  elsif ($arg eq '-htmlcore' ) {$htmlstyle=1;}
+  elsif ($arg eq '-htmlcore' ) {option_ansi_colours(0);$htmlstyle=1;}
   elsif ($arg eq '-html' ) {option_ansi_colours(0);$htmlstyle=2;}
+  elsif ($arg eq '-tex' ) {option_ansi_colours(0);$texcodeoutput=1;}
   elsif ($arg =~/^\-(nocol|nc$)/) {option_ansi_colours(0);}
   elsif ($arg =~/^\-(col)$/) {option_ansi_colours(1);}
   elsif ($arg eq '-codes') {$showcodes=2;}
@@ -1263,14 +1271,16 @@ sub Apply_Options {
   if ($showcodes>1 && !($STYLE{'<printlevel>'})) {%STYLE=%{$STYLES{'All'}};} 
   if ($showstates) {set_verbosity_options('+States');}
   if (!@sumweights) {set_verbosity_options('-Sums');}
-  (defined ($printlevel=$STYLE{'<printlevel>'})) || ($printlevel=-1);
+  (defined $printlevel)
+   || (defined ($printlevel=$STYLE{'<printlevel>'}))
+   || ($printlevel=$defaultprintlevel);
 }
 
 # Set or add styles included in the verbose output
 sub set_verbosity_options {
   my $verb=shift @_;
   my $st;
-  if ($printlevel<1) {$printlevel=1;}
+  if ($defaultprintlevel<1) {$defaultprintlevel=1;}
   if ( $verb=~s/^([0-4])// || $verb=~s/^=([0-4])?// ) {
     my $key=$1;
     if (!defined $key) {%STYLE=(%{$STYLES{'<core>'}});}
@@ -1812,13 +1822,13 @@ sub apply_substitution_rule {
 ## Get more TeX code from texcode buffer if possible, return 1 if done
 sub more_texcode {
   my ($tex)=@_;
-  if (!defined $tex->{'texcode'}) {return 0;}
+  if ($tex->{'texcode'} eq '') {return 0;}
   if ( $optionFast && $tex->{'texcode'} =~ s/^(.*?(\r{2,}|\n{2,}|(\r\n){2,}))//s ) {
     $tex->{'line'}.=$1; # $1 ~ ${^MATCH}
     return 1;
   }
   $tex->{'line'}.=$tex->{'texcode'};
-  $tex->{'texcode'}=undef;
+  $tex->{'texcode'}='';
   return 1;
 }
 
@@ -1926,7 +1936,7 @@ sub error {
   $tex->{'errorcount'}++;
   if (my $count=$tex->{'subcount'}) {$count->{'errorcount'}++};
   if (my $err=$tex->{'errorbuffer'}) {push @$err,$text;}
-  elsif ($printlevel>=0) {_print_error($text);}
+  else {print_error($text);}
 }
 
 # Print error details
@@ -1941,6 +1951,29 @@ sub assert {
   if ($assertion) {return 1;}
   error(@_);
   return 0;
+}
+
+# Print error message
+sub print_error {
+  my $text=shift @_;
+  line_return(1);
+  if ($printlevel<0) {
+    print STDERR 'ERROR: ',$text,"\n";
+  } elsif ($htmlstyle) {
+    print STDERR 'ERROR: ',$text,"\n";
+    print_style($text,'error');
+  } else {
+    print_style("!!! $text !!!",'error');
+  }
+  line_return(1);
+}
+
+# Print errors in buffer and delete errorbuffer
+sub flush_errorbuffer {
+  my $source=shift @_;
+  my $err=$source->{'errorbuffer'} || return;
+  foreach (@$err) {print_error($_);}
+  $source->{'errorbuffer'}=undef;
 }
 
 ###### Parsing routines
@@ -1964,6 +1997,8 @@ sub parse_all {
 }
 
 # Parse one block/unit with given state until end token
+# If end token is set to $_PARAM_, unit is assumed to be a parameter
+# and words parsed as individual letters (simple_token is set)
 sub _parse_unit {
   my ($tex,$state,$end)=@_;
   my $simple_token=0;
@@ -1993,13 +2028,6 @@ sub _parse_unit {
     } elsif ($tex->{'type'}==$TOKEN_SPACE) {
       # space or other code that should be passed through without styling
       flush_next($tex,' ');
-    } elsif ($next eq '\documentclass') {
-      # defines document class and starts preamble
-      set_style($tex,'document');
-      _parse_documentclass_params($tex);
-      while (!($tex->{'eof'})) {
-        _parse_unit($tex,$STATE_PREAMBLE);
-      }
     } elsif ($tex->{'type'}==$TOKEN_TC) {
       # parse TC instructions
       _parse_tc($tex,$next);
@@ -2020,9 +2048,13 @@ sub _parse_unit {
     } elsif ($state==$STATE_EXCLUDE_STRONGER) {
       # ignore remaining tokens
       set_style($tex,'ignore');
-    } elsif ($tex->{'type'}==$TOKEN_MACRO && $state==$STATE_EXCLUDE_STRONGER) {#TODO: Not needed any more
-      # ignore macro call
-      set_style($tex,'ignore');
+    } elsif ($next eq '\documentclass') {
+      # defines document class and starts preamble
+      set_style($tex,'document');
+      _parse_documentclass_params($tex);
+      while (!($tex->{'eof'})) {
+        _parse_unit($tex,$STATE_PREAMBLE);
+      }
     } elsif ($tex->{'type'}==$TOKEN_MACRO) {
       # macro call
       _parse_macro($tex,$next,$state);
@@ -2034,10 +2066,11 @@ sub _parse_unit {
       if (!(defined $end && $end eq '$')) {
         _parse_math($tex,$state,$CNT_COUNT_DISPLAYMATH,'$$');
       }
-    }
-    elsif ($simple_token) {
+    } elsif ($simple_token) {
       #DELETE: simple tokens should be handled properly
-      print STDERR $next,"\n";
+      #print STDERR '<',$next,'>',"\n";
+      # handle as parameter that should not be counted
+      set_style($tex,'ignore');
     }
     if (!defined $end) {return;}
   }
@@ -2068,7 +2101,8 @@ sub _parse_macro {
     }
     next_subcount($tex,$label);
   }
-  set_style($tex,state_is_text($state)?'cmd':'exclcmd');
+  if ($state==$STATE_MATH) {set_style($tex,'mathcmd');}
+  else {set_style($tex,state_is_text($state)?'cmd':'exclcmd');}
   if ($next eq '\begin' && state_inc_envir($state)) {
     _parse_envir($tex,$state);
     push @macro,'<envir>';
@@ -2082,6 +2116,7 @@ sub _parse_macro {
     push @macro,'<package>';
   } elsif (state_is_parsed($state) && defined (my $def=$TeXfileinclude{$next})) {
     # include file (merge in or queue up for parsing)
+    set_style($tex,'cmd');
     if (defined ($substat=$TeXmacro{'@pre'.$next})) {__gobble_macro_parms($tex,$substat,$state);}
     __count_macrocount($tex,$next,$state);
     _parse_include_file($tex,$state,$def);
@@ -2094,6 +2129,7 @@ sub _parse_macro {
   } elsif ($state==$STATE_PREAMBLE && defined ($substat=$TeXpreamble{$next})) {
     # parse preamble include macros
     set_style($tex,'cmd');
+    __count_macrocount($tex,$next,$STATE_TEXT);
     push @macro,__gobble_macro_parms($tex,$substat,$__STATE_NULL);
   } elsif (state_is_exclude($state)) {
    # ignore
@@ -2119,6 +2155,7 @@ sub _parse_macro {
     # count macro as word (or a given number of words)
   } elsif ($next =~ /^\\[^\w\_]$/) {
     # handle \<symbol> as single symbol macro
+    push @macro,__gobble_options($tex),'/*symbol*/';
   } else {
     push @macro,__gobble_options($tex),'/*defaultrule*/';
   }
@@ -2131,7 +2168,7 @@ sub _parse_tc {
   set_style($tex,'tc');
   flush_next($tex);
   assert($next=~s/^\%+TC:\s*(\w+)\s*//i
-    ,$tex,'TC command should have format %TC:instruction {macro} {parameters}')
+    ,$tex,'TC command should have format %TC:instruction [[parameters]]')
   || return;
   my $instr=$1;
   $instr=~tr/[A-Z]/[a-z]/;
@@ -2143,6 +2180,8 @@ sub _parse_tc {
   } elsif ($instr eq 'endignore') {error($tex,'%TC:endignore without corresponding %TC:ignore.');
   } elsif ($instr eq 'newtemplate') {$outputtemplate='';
   } elsif ($instr eq 'template') {$outputtemplate.=$next;
+  } elsif ($instr eq 'insert') {
+    $tex->{'line'}="\n".$next.$tex->{'line'};
   } elsif ($instr eq 'subst') {
     if ($next=~/^(\\\S+)\s+(.*)$/) {
       my $from=$1;
@@ -2166,7 +2205,7 @@ sub _parse_tc {
     my $option=$4;
     tc_macro_param_option($tex,$instr,$macro,$param,$option);
   } else {
-    error($tex,'Invalid TC command format: '.$instr);
+    error($tex,'Invalid TC command: '.$instr);
   }
 }
 
@@ -2242,7 +2281,7 @@ sub _parse_envir {
     if ($tex->{'line'} =~ s/^\{([^\{\}\s]+)\}[ \t\r\f]*//) {
       # gobble environment name
       print_style('{'.$1.'}',$localstyle);
-      assert($envirname eq $1,$tex,"Environment \begin{$envirname} ended with end{$1}.");
+      assert($envirname eq $1,$tex,"Environment \\begin{$envirname} ended with \\end{$1}.");
     } else {
       error($tex,"Environment ended while waiting for \end{$envirname}.");
     }  
@@ -2422,7 +2461,7 @@ sub __gobble_macro_parms {
     my $p=$parm->[$j];
     if ($p==$_STATE_OPTION) {
       # Parse macro option
-      $j++; $p=$parm->[$j];
+      $p=$parm->[++$j];
       if ($tex->{'line'}=~s/^(\s*\[)//) {
         flush_next_gobble_space($tex);
         print_style($1,'optparm');
@@ -2492,6 +2531,7 @@ sub next_token {
 }
 
 # Read, interpret and return next token
+# If simple_token is set, words cannot form tokens
 sub _get_next_token {
   my ($tex,$simple_token)=@_;
   my $next;
@@ -2517,7 +2557,7 @@ sub _get_next_token {
       else {return __set_token($tex,$match,$TOKEN_SYMBOL);}
     } elsif ($ch eq '\\') {
       if ($tex->{'line'}=~s/^(\\[{}%])//) {return __set_token($tex,$1,$TOKEN_SYMBOL);}
-      if ($tex->{'line'}=~s/^(\\([a-zA-Z@]+|[^a-zA-Z@\t\r\n\f]))//) {return __set_token($tex,$1,$TOKEN_MACRO);}
+      if ($tex->{'line'}=~s/^(\\([a-zA-Z@]+|[^a-zA-Z@[:^print:]]))//) {return __set_token($tex,$1,$TOKEN_MACRO);}
       return __get_chtoken($tex,$ch,$TOKEN_END);
     } elsif ($ch eq '$') {
       $tex->{'line'}=~s/^(\$\$?)//;
@@ -2803,9 +2843,9 @@ sub print_macro_stat {
   __print_word_freq('Macro/envir','Freq','th');
   if ($htmlstyle) {print "</thead>\n";}
   if ($htmlstyle) {print "<tbody class='macrostat'>\n";}
-
   foreach my $name (sort keys %MacroUsage) {
     my $freq=$MacroUsage{$name};
+    $name=text_to_printable($name);
     $name=text_to_print($name);
     if ($htmlstyle) {
       print "<tr><td>$name</td><td>$freq</td></tr>\n";
@@ -2813,10 +2853,10 @@ sub print_macro_stat {
       print $name,': ',$freq,"\n";
     }
   }
-
   if ($htmlstyle) {print "</tbody>\n";}
   if ($htmlstyle) {print "</table>\n";}
 }
+
 
 ###### Printing routines
 
@@ -2842,7 +2882,24 @@ sub text_to_print {
     $text=~s/</&lt;/g;
     $text=~s/>/&gt;/g;
     $text=~s/[ \t]{2}/\&nbsp; /g;
+  } elsif ($texcodeoutput) {
+    $text=~s/\\/\\textbackslash¤/g;
+    $text=~s/([%{}])/\\$1/g;
+    $text=~s/¤/{}/g;
   }
+  return $text;
+}
+
+# Return &#xxx; code for character ;
+sub convert_to_charcode {
+  my $ch=shift @_;
+  return '&#'.ord($ch).';';
+}
+
+# Convert special characters to charcodes to make it printable ;
+sub text_to_printable {
+  my $text=shift @_;
+  $text=~s/([^[:print:]])/convert_to_charcode($1)/gse;
   return $text;
 }
 
@@ -3034,26 +3091,33 @@ sub flush_next {
   return $ret;
 }
 
-# Print next token and gobble following spaces
+# Print next token and gobble following spaces (incl. line break and comments)
 sub flush_next_gobble_space {
   my ($tex,$style,$state)=@_;
   my $ret=flush_next($tex,$style);
   if (!defined $ret) {$ret=0;}
   if (!defined $state) {$state=$STATE_IGNORE;}
   my $prt=($printlevel>0);
-  if ($tex->{'line'}=~s/^([ \t\f]*)(\r\n?|\n)([ \t\f]*)//) {
-    if (!$prt) {
-    } elsif ($printlevel>1 || $ret) {
-      print $1;
-      line_return(-1,$tex);
-      my $space=$3;
-      if ($htmlstyle) {$space=~s/  /\&nbsp;/g;}
-      print $space;
-    } else {
-      line_return(0,$tex);
+  while (1) {
+    if ($tex->{'line'}=~s/^([ \t\f]*)(\r\n|\r|\n)([ \t\f]*)//) {
+      if (!$prt) {
+      } elsif ($printlevel>1 || $ret) {
+        print $1;
+        line_return(-1,$tex);
+        my $space=$3;
+        if ($htmlstyle) {$space=~s/  /\&nbsp;/g;}
+        print $space;
+        $ret=0;
+      } else {
+        line_return(0,$tex);
+      }
+    } elsif ($tex->{'line'}=~s/^([ \t\f]+)//) {
+      if ($prt) {print $1;}
     }
-  } elsif ($tex->{'line'}=~s/^([ \t\f]*)//) {
-    if ($prt) {print $1;}
+    if ($tex->{'line'}=~s/^(\%+[^\r\n]*)//) {
+      print_style($1,'comment');
+      $ret=1;
+    } else {return;}
   }
 }
 
@@ -3091,23 +3155,6 @@ sub line_return {
     linebreak();
     $blankline++;
   }
-}
-
-# Print error message
-sub _print_error {
-  my $text=shift @_;
-  line_return(1);
-  print_style("!!!  $text  !!!",'error');
-  if ($htmlstyle) {print STDERR $text,"\n";}
-  line_return(1);
-}
-
-# Print errors in buffer and delete errorbuffer
-sub flush_errorbuffer {
-  my $source=shift @_;
-  my $err=$source->{'errorbuffer'} || return;
-  foreach (@$err) {_print_error($_);}
-  $source->{'errorbuffer'}=undef;
 }
 
 ###### Print help on style/colour codes
@@ -3420,7 +3467,7 @@ print <<END
 <style>
 <!--
 body {width:auto;padding:5;margin:5;}
-.error {font-weight:bold;color:#f00;font-style:italic;}
+.error {font-weight:bold;color:#f00;font-style:italic; border: solid 1px red;}
 .word,.hword,.oword,.altwd {border-left: 1px solid #CDF; border-bottom: 1px solid #CDF;}
 .word {color: #009}
 .hword {color: #009; font-weight: 700;}
@@ -3431,9 +3478,10 @@ body {width:auto;padding:5;margin:5;}
 .option {color: #cc0;}
 .optparm {color: #c90;}
 .envir, .document {color: #900; font-weight:bold;}
-.math {color: #0c0;}
+.math {color: #6c0;}
 .mathgroup {color: #090;}
-.exclmath {color: #6c6;}
+.exclmath {color: #9f6;}
+.mathcmd {color: #6c0;}
 .ignore {color: #999;}
 .exclenv {color:#c66;}
 .tc {color: #999; font-weight:bold;}
@@ -3640,6 +3688,7 @@ Options:
   -v2           More verbose: also print ignored text.
   -v3           Even more verbose: include comments and options.
   -v4           Same as -v3 -showstate.
+  -v=, v0=, ..., -v4=    Set verbosity by adding/removing particular types of token (styles) to include in the verbose output. Use -help-style to get details of which tokens are included in each style, and of classes of tokens (style categories).
   -showstate    Show internal states (with verbose).
   -brief        Only prints a brief, one line summary of counts.
   -q, -quiet    Quiet mode, no error messages. Use is discouraged!
@@ -3655,6 +3704,7 @@ Options:
   -html         Output in HTML format.
   -htmlcore     Only HTML body contents.
   -htmlfile=    HTML template file to use with the -html option. Use <!-- TeXcode --> to indicate where the output from TeXcount should be inserted.
+  -tex          Encode TeX special characters for output into TeX code
   -cssfile=     CSS file to include instead of default styles.
   -css=         CSS href to include instead of default styles. Can use -css=file:{filename} instead of -cssfile={filename}.
   -opt=, -optionfile=   Read options/parameters from file.
@@ -3682,8 +3732,9 @@ Options:
   -char, -character, -letters    Counts letters/characters instead of words. Note that spaces and punctuation is not counted.
   -char-only, ..., -letters-only    Like -letters, but counts alphabetic letters only.
   -countall, -count-all    The default setting in which all characters are included as either alphabets og logograms.
-  -freq         Produce individual word frequency table.
-  -stat         Produce statistics on language/script usage. 
+  -freq, -freq=    Produce individual word frequency table. Optionally give minimal number of occurences to be listed.
+  -stat         Produce statistics on language/script usage.
+  -macrostat, -macrofreq    Print macro usage statistics.
   -codes        Display output style code overview and explanation. This is on by default.
   -nocodes      Do not display output style code overview.
   -out=         Write output to file, give filename as option value.
@@ -3732,10 +3783,13 @@ and are used to control how TeXcount parses the document. The following instruct
 The [param.states] is used to indicate the number of parameters used by the macro and the rules of handling each of these: the format is [#,#,...,#] with # representing one number for each parameter giving the parsing state to use for that parameter, alternatively just a single number (#) indicating how many parameters to ignore (parsing state 0). The option [content-state] is used to give the parsing state to use for the contents of a begin-end group. The main parsing states are 0 to ignore and 1 to count as text.
 
 Parsing instructions which may be used anywhere are:
-@ -                    :
-  %TC:ignore           start block to ignore
-  %TC:endignore        end block to ignore
-  %TC:break [title]    add subcount break point here
+@ -                         :
+  %TC:break [title]         add subcount break point here
+  %TC:incbib                include bibliography (same as running with -incbib)
+  %TC:ignore                ignore region, end with %TC:endignore
+  %TC:insert [code]         insert code for TeXcount to process as TeX code
+  %TC:newtemplate           start a new template, ie delete the existing one
+  %TC:template [template]   add another line to the template specification
 See the documentation for more details.
 
 Command line options and most %TC commands (prefixed by % rather than %TC:) may be placed in an options file. This is particularly useful for defining your own output templates and macro handling rules.
